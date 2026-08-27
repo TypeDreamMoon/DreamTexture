@@ -53,13 +53,15 @@ type Patch struct {
 	Proxy         *string  `json:"proxy,omitempty"`
 	OpenAIBaseURL *string  `json:"openai_base_url,omitempty"`
 	Flatten       *float64 `json:"flatten,omitempty"`
+	RefineModel   *string  `json:"refine_model,omitempty"`
 
-	ComfyMode      *string   `json:"comfy_mode,omitempty"`
-	ComfyBaseURL   *string   `json:"comfy_base_url,omitempty"`
-	ComfyPython    *string   `json:"comfy_python,omitempty"`
-	ComfyMainPy    *string   `json:"comfy_main_py,omitempty"`
-	ComfyExtraArgs *[]string `json:"comfy_extra_args,omitempty"`
-	ComfyAutoStart *bool     `json:"comfy_auto_restart,omitempty"`
+	ComfyMode        *string   `json:"comfy_mode,omitempty"`
+	ComfyBaseURL     *string   `json:"comfy_base_url,omitempty"`
+	ComfyPython      *string   `json:"comfy_python,omitempty"`
+	ComfyMainPy      *string   `json:"comfy_main_py,omitempty"`
+	ComfyExtraArgs   *[]string `json:"comfy_extra_args,omitempty"`
+	ComfyAutoStart   *bool     `json:"comfy_auto_restart,omitempty"`
+	ComfyReserveVRAM *float64  `json:"comfy_reserve_vram,omitempty"`
 }
 
 // restartKeys 列出改完必须重启后端才生效的字段，用于如实告诉用户。
@@ -73,6 +75,7 @@ var restartKeys = map[string]string{
 	"comfy_main_py":      "ComfyUI 主程序",
 	"comfy_extra_args":   "ComfyUI 启动参数",
 	"comfy_auto_restart": "自动重启",
+	"comfy_reserve_vram": "显存余量",
 }
 
 // Apply 校验并写入改动，返回需要重启才生效的项。
@@ -92,6 +95,10 @@ func (s *Store) Apply(p Patch) (needRestart []string, err error) {
 	if p.Flatten != nil {
 		next.Imagen.Flatten = *p.Flatten
 		touched["flatten"] = true
+	}
+	if p.RefineModel != nil {
+		next.Imagen.RefineModel = *p.RefineModel
+		touched["refine_model"] = true
 	}
 	if p.ComfyMode != nil {
 		next.Comfy.Mode = config.Mode(*p.ComfyMode)
@@ -116,6 +123,15 @@ func (s *Store) Apply(p Patch) (needRestart []string, err error) {
 	if p.ComfyAutoStart != nil {
 		next.Comfy.AutoRestart = *p.ComfyAutoStart
 		touched["comfy_auto_restart"] = true
+	}
+	if p.ComfyReserveVRAM != nil {
+		v := *p.ComfyReserveVRAM
+		if v < 0 || v > 16 {
+			s.mu.Unlock()
+			return nil, fmt.Errorf("显存余量只能落在 0~16 GB，收到 %v", v)
+		}
+		next.Comfy.ReserveVRAM = v
+		touched["comfy_reserve_vram"] = true
 	}
 
 	if err := next.Validate(); err != nil {
@@ -168,12 +184,14 @@ func (s *Store) write(next config.Config, touched map[string]bool) error {
 		"proxy":              func() { imagen["proxy"] = next.Imagen.Proxy },
 		"openai_base_url":    func() { imagen["openai_base_url"] = next.Imagen.OpenAIBaseURL },
 		"flatten":            func() { imagen["flatten"] = next.Imagen.Flatten },
+		"refine_model":       func() { imagen["refine_model"] = next.Imagen.RefineModel },
 		"comfy_mode":         func() { comfy["mode"] = string(next.Comfy.Mode) },
 		"comfy_base_url":     func() { comfy["base_url"] = next.Comfy.BaseURL },
 		"comfy_python":       func() { comfy["python"] = next.Comfy.Python },
 		"comfy_main_py":      func() { comfy["main_py"] = next.Comfy.MainPy },
 		"comfy_extra_args":   func() { comfy["extra_args"] = next.Comfy.ExtraArgs },
 		"comfy_auto_restart": func() { comfy["auto_restart"] = next.Comfy.AutoRestart },
+		"comfy_reserve_vram": func() { comfy["reserve_vram_gb"] = next.Comfy.ReserveVRAM },
 	}
 	for k := range touched {
 		if fn, ok := set[k]; ok {

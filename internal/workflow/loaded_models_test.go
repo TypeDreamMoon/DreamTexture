@@ -22,6 +22,9 @@ func TestDeclaredModelsMatchRenderedGraph(t *testing.T) {
 	}
 
 	for _, tpl := range reg.List() {
+		if tpl.Meta.Direct() {
+			continue // 没有节点图，无从比对
+		}
 		// 默认参数下，声明的每个 checkpoint 都应当真的出现在图里；
 		// 对不上说明声明和模板脱节了。
 		def, err := tpl.Render(map[string]any{}, "probe")
@@ -42,7 +45,7 @@ func TestDeclaredModelsMatchRenderedGraph(t *testing.T) {
 			}
 		}
 
-		if tpl.Meta.Source == nil {
+		if tpl.Meta.Source == nil || tpl.Meta.Kind != KindMaterial {
 			continue
 		}
 		// 直出模式：SDXL 底模必须消失，CHORD（如有）必须还在。

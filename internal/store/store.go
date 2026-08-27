@@ -76,6 +76,50 @@ CREATE TABLE IF NOT EXISTS materials (
 CREATE INDEX IF NOT EXISTS idx_materials_created  ON materials(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_materials_favorite ON materials(favorite);
 CREATE INDEX IF NOT EXISTS idx_materials_style    ON materials(style);
+
+-- 图片：单张出图，不是材质套装。
+--
+-- 单开一张表而不是塞进 materials：材质套装有 manifest、多路通道、无缝与
+-- 法线方向这些契约，UE 那边照着读；一张只有底色、tileable=false 的"材质"
+-- 是在骗下游。两者的检索维度也不一样（图片关心尺寸与花费，材质关心风格
+-- 与分辨率）。
+CREATE TABLE IF NOT EXISTS pictures (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  workflow_id TEXT NOT NULL,
+  prompt      TEXT NOT NULL,
+  negative    TEXT NOT NULL DEFAULT '',
+  seed        INTEGER NOT NULL DEFAULT 0,
+  width       INTEGER NOT NULL DEFAULT 0,
+  height      INTEGER NOT NULL DEFAULT 0,
+  provider    TEXT NOT NULL DEFAULT '',
+  model       TEXT NOT NULL DEFAULT '',
+  cost_usd    REAL NOT NULL DEFAULT 0,
+  favorite    INTEGER NOT NULL DEFAULT 0,
+  tags        TEXT NOT NULL DEFAULT '',
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pictures_created  ON pictures(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pictures_favorite ON pictures(favorite);
+
+-- 参考图库：上传的与从产物提升上来的参考图。
+--
+-- 之前参考图是"传一张、用完就散"，没有留存。做成库之后可以反复用同一张，
+-- 也能把满意的产物直接变成下一轮的参考。
+CREATE TABLE IF NOT EXISTS refs (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  file        TEXT NOT NULL,
+  -- comfy_name 是它在 ComfyUI input 目录里的文件名。
+  -- 单独记是因为提交工作流时要填的是那个名字，而不是我们自己的路径。
+  comfy_name  TEXT NOT NULL DEFAULT '',
+  width       INTEGER NOT NULL DEFAULT 0,
+  height      INTEGER NOT NULL DEFAULT 0,
+  bytes       INTEGER NOT NULL DEFAULT 0,
+  origin      TEXT NOT NULL DEFAULT '',
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_refs_created ON refs(created_at DESC);
 `
 	if _, err := s.db.Exec(schema); err != nil {
 		return fmt.Errorf("建表: %w", err)

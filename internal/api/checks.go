@@ -26,7 +26,7 @@ type Check struct {
 // 这是从竞品尸检里学到的最一致的一课：装不上、跑不起来是同类工具最大的劝退点，
 // 与其让用户点了生成才看到一句 "node not found"，不如一进门就告诉他缺什么。
 func (s *Server) checks(w http.ResponseWriter, r *http.Request) {
-	out := []Check{s.checkComfy(), s.checkNodes(r), s.checkModels(r), s.checkOutputDir()}
+	out := []Check{s.checkComfy(), s.checkVRAM(r), s.checkNodes(r), s.checkModels(r), s.checkOutputDir()}
 	// 云端底图只在真有工作流用到它时才检查，免得给不用这功能的人添一条无关警告。
 	if c, used := s.checkImagen(r); used {
 		out = append(out, c)

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,16 +23,16 @@ import (
 //
 // Alive 与 Ready 是分开的：进程活着但队列积压时不该继续派活。
 type Health struct {
-	Mode           string    `json:"mode"`
-	Alive          bool      `json:"alive"`
-	Ready          bool      `json:"ready"`
-	Reason         string    `json:"reason,omitempty"`
-	BaseURL        string    `json:"base_url"`
-	PID            int       `json:"pid,omitempty"`
-	Version        string    `json:"comfyui_version,omitempty"`
-	Device         string    `json:"device,omitempty"`
-	VRAMTotalMB    int64     `json:"vram_total_mb,omitempty"`
-	VRAMFreeMB     int64     `json:"vram_free_mb,omitempty"`
+	Mode          string    `json:"mode"`
+	Alive         bool      `json:"alive"`
+	Ready         bool      `json:"ready"`
+	Reason        string    `json:"reason,omitempty"`
+	BaseURL       string    `json:"base_url"`
+	PID           int       `json:"pid,omitempty"`
+	Version       string    `json:"comfyui_version,omitempty"`
+	Device        string    `json:"device,omitempty"`
+	VRAMTotalMB   int64     `json:"vram_total_mb,omitempty"`
+	VRAMFreeMB    int64     `json:"vram_free_mb,omitempty"`
 	QueueDepth    int       `json:"queue_depth"`
 	Restarts      int       `json:"restarts"`
 	LastCheckedAt time.Time `json:"last_checked_at"`
@@ -332,9 +333,18 @@ func (s *Supervisor) spawn(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	args := append([]string{"-s", s.cfg.MainPy, "--listen", host, "--port", port}, s.cfg.ExtraArgs...)
+	args := []string{"-s", s.cfg.MainPy, "--listen", host, "--port", port}
+	// 显存余量放在 ExtraArgs 之前，用户想手动覆盖时后写的那个生效。
+	if s.cfg.ReserveVRAM > 0 {
+		args = append(args, "--reserve-vram", strconv.FormatFloat(s.cfg.ReserveVRAM, 'g', -1, 64))
+	}
+	args = append(args, s.cfg.ExtraArgs...)
 	cmd := exec.Command(s.cfg.Python, args...)
 	cmd.Dir = filepath.Dir(s.cfg.MainPy)
+	// 不要在这里设 PYTORCH_CUDA_ALLOC_CONF：ComfyUI 的 cuda_malloc.py 会往这个
+	// 变量后面**追加** backend:cudaMallocAsync，而 expandable_segments 只对
+	// 原生缓存分配器有效，两者拼在一起等于白写。想换分配器就往 ExtraArgs 里
+	// 加 --disable-cuda-malloc，那才是 ComfyUI 认的开关。
 	cmd.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8")
 
 	group, err := newProcGroup()

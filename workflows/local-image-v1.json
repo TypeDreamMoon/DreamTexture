@@ -1,0 +1,148 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "Juggernaut-XL-v9.safetensors"
+    },
+    "_meta": {
+      "title": "dt.checkpoint"
+    }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "texture of large old broken rocks with moss, top down view, seamless tileable, orthographic, flat even lighting, no shadows",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "dt.positive"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "perspective, vignette, cast shadow, specular highlight, blurry, watermark, text, border",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "dt.negative"
+    }
+  },
+  "7": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "dt.latent"
+    }
+  },
+  "8": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "positive": [
+        "5",
+        0
+      ],
+      "negative": [
+        "6",
+        0
+      ],
+      "latent_image": [
+        "7",
+        0
+      ],
+      "seed": 1019289458269256,
+      "steps": 30,
+      "cfg": 7,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1
+    },
+    "_meta": {
+      "title": "dt.sampler"
+    }
+  },
+  "9": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "8",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    },
+    "_meta": {
+      "title": "dt.decode"
+    }
+  },
+  "50": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": ""
+    },
+    "_meta": {
+      "title": "dt.reference_image"
+    }
+  },
+  "51": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "50",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 1024,
+      "height": 1024,
+      "crop": "center"
+    },
+    "_meta": {
+      "title": "dt.reference_scale"
+    }
+  },
+  "52": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "51",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    },
+    "_meta": {
+      "title": "dt.reference_encode"
+    }
+  },
+  "19": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "9",
+        0
+      ],
+      "filename_prefix": "dreamtexture/source"
+    },
+    "_meta": {
+      "title": "dt.out.image"
+    }
+  }
+}

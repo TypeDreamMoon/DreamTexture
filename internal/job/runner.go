@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mengye/dreamtexture/internal/comfy"
@@ -28,10 +29,10 @@ import (
 var ErrQueueFull = errors.New("任务队列已满")
 
 type Runner struct {
-	sup       *comfy.Supervisor
-	reg       *workflow.Registry
-	st        *store.Store
-	bus       *Bus
+	sup    *comfy.Supervisor
+	reg    *workflow.Registry
+	st     *store.Store
+	bus    *Bus
 	log    *slog.Logger
 	imagen *imagen.Registry
 	// flatten 现取而不是存值：用户在设置页改完压平强度，下一个任务就该按
@@ -49,6 +50,11 @@ type Runner struct {
 	cancel   context.CancelFunc
 	// lastWorkflow 记录上一个执行过的工作流，用于判断要不要先腾显存。
 	lastWorkflow string
+
+	// beat 是卡死看门狗的心跳，见 stall.go。
+	beat beat
+	// node 是 ComfyUI 正在执行的节点 id，卡死时用来指认停在哪一步。
+	node atomic.Value
 }
 
 type Options struct {
@@ -108,8 +114,11 @@ func (r *Runner) Submit(req Request) ([]*store.Job, error) {
 		req.Variants = 8
 	}
 
-	// 提前渲染一次仅为校验参数：宁可在提交时就报错，也不要等排到了才失败。
-	if _, err := tpl.Render(req.Params, "probe"); err != nil {
+	// 提前跑一次仅为校验参数：宁可在提交时就报错，也不要等排到了才失败。
+	//
+	// 直出的模板没有节点图，只能校验到参数这一层——拿 Render 去校验它会被
+	// 一句"没有节点图可渲染"挡在门外，整条云端出图就此提交不了。
+	if err := validateParams(tpl, req.Params); err != nil {
 		return nil, err
 	}
 	if err := r.checkSource(tpl, req.Params); err != nil {
@@ -153,6 +162,18 @@ func (r *Runner) Submit(req Request) ([]*store.Job, error) {
 		r.bus.Publish(Event{Type: "job.queued", Job: j})
 	}
 	return jobs, nil
+}
+
+// validateParams 在提交时先把参数验一遍。
+//
+// 有节点图的照旧整张渲染，顺带能查出连线断掉之类的模板问题；直出的只验参数。
+func validateParams(tpl *workflow.Template, params map[string]any) error {
+	if tpl.Meta.Direct() {
+		_, err := tpl.Resolve(params)
+		return err
+	}
+	_, err := tpl.Render(params, "probe")
+	return err
 }
 
 // maxSafeSeed 是 JSON 数字能无损往返的上界（2^53-1）。
@@ -286,6 +307,15 @@ func (r *Runner) execute(ctx context.Context, j *store.Job) error {
 	if !ok {
 		return fmt.Errorf("工作流 %q 不存在", j.WorkflowID)
 	}
+
+	// 纯云端直出：整条链路上没有 ComfyUI 的事，连等它都不必等。
+	//
+	// 这一点很要紧——否则"想用云端出张图"就得先有一个装好的 ComfyUI，
+	// 而那正是新用户还没有的东西。
+	if tpl.Meta.Direct() {
+		return r.executeDirect(ctx, j, tpl)
+	}
+
 	if err := r.waitComfyAvailable(ctx, j); err != nil {
 		return err
 	}
@@ -359,6 +389,9 @@ func (r *Runner) execute(ctx context.Context, j *store.Job) error {
 	_ = r.st.UpdateJob(j)
 	r.bus.Publish(Event{Type: "job.progress", Job: j})
 
+	if tpl.Meta.Kind == workflow.KindImage {
+		return r.collectImage(ctx, j, tpl, rendered, entry)
+	}
 	return r.collect(ctx, j, tpl, rendered, entry)
 }
 
@@ -437,6 +470,9 @@ func (r *Runner) waitDone(ctx context.Context, j *store.Job) (*comfy.HistoryEntr
 	poll := time.NewTicker(2 * time.Second)
 	defer poll.Stop()
 
+	r.beat.touch()
+	r.node.Store("")
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -446,26 +482,49 @@ func (r *Runner) waitDone(ctx context.Context, j *store.Job) (*comfy.HistoryEntr
 		entry, ok, err := cli.History(ctx, j.PromptID)
 		if err != nil {
 			// ComfyUI 可能正在重启，让健康巡检去处理，这里继续等。
+			// 连不上也不该推进心跳：真断了要让看门狗算数。
 			r.log.Debug("查询 history 失败，稍后重试", "job", j.ID, "err", err)
 			continue
 		}
 		if ok && entry.Status.Completed {
 			return entry, nil
 		}
+		// 没跑完，看看是"在跑"还是"死在那儿"。
+		if idle := r.beat.idle(); idle > stallTimeout {
+			node, _ := r.node.Load().(string)
+			reason := r.stallReason(ctx, idle, node)
+			r.log.Warn("判定任务卡死，正在打断 ComfyUI", "job", j.ID, "空转", idle, "节点", node)
+			// 必须打断：否则 ComfyUI 会一直磨这张图，后面排队的任务全跟着陪葬。
+			if err := cli.Interrupt(context.WithoutCancel(ctx)); err != nil {
+				r.log.Warn("打断 ComfyUI 失败", "err", err)
+			}
+			return nil, errors.New(reason)
+		}
 	}
 }
 
 // OnComfyEvent 把 ComfyUI 的进度事件折算到当前任务上。
 func (r *Runner) OnComfyEvent(ev comfy.Event) {
-	if ev.Type != "progress" || ev.Max <= 0 {
-		return
-	}
 	r.mu.Lock()
 	j := r.current
 	r.mu.Unlock()
 	if j == nil || (ev.PromptID != "" && ev.PromptID != j.PromptID) {
 		return
 	}
+
+	// executing 也算动静：采样之外的环节（解码、分解、落盘）没有 progress
+	// 事件，只有换节点时吭一声。不把它算进心跳，看门狗会误杀正常的慢步骤。
+	if ev.Type == "executing" {
+		r.beat.touch()
+		if ev.Node != "" {
+			r.node.Store(ev.Node)
+		}
+		return
+	}
+	if ev.Type != "progress" || ev.Max <= 0 {
+		return
+	}
+	r.beat.touch()
 	// 采样占大头，但后面还有分解和落盘，所以留出尾部空间。
 	p := float64(ev.Value) / float64(ev.Max) * 0.9
 	if p <= j.Progress {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -398,8 +399,8 @@ func (o *OpenAI) Generate(ctx context.Context, req Request) (*Result, error) {
 	}
 
 	var parsed openaiImageResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("解析响应失败: %w", err)
+	if err := decodeJSON(resp, body, "图像接口", &parsed); err != nil {
+		return nil, err
 	}
 	if len(parsed.Data) == 0 {
 		return nil, fmt.Errorf("服务端没有返回任何图像")
@@ -545,6 +546,40 @@ func putIfSetStr(m map[string]string, k, v string) {
 	if s := strings.TrimSpace(v); s != "" && s != "auto" {
 		m[k] = s
 	}
+}
+
+// decodeJSON 解析响应体，解析不了时把实际收到的东西说清楚。
+//
+// 光报 "invalid character '<'" 等于什么都没说。这条路径上最常见的情况是
+// 自建网关在某个路径上返回了一张 HTML 页面（登录页、Cloudflare 盾、
+// 或者干脆是它自己的 404），而且往往还带着 200 状态码——不把响应内容摆出来，
+// 用户根本无从判断是地址填错了还是网关不支持这个接口。
+func decodeJSON(resp *http.Response, body []byte, what string, out any) error {
+	if json.Unmarshal(body, out) == nil {
+		return nil
+	}
+	ct := resp.Header.Get("Content-Type")
+	if i := strings.IndexByte(ct, ';'); i > 0 {
+		ct = ct[:i]
+	}
+	snippet := strings.Join(strings.Fields(string(body)), " ")
+	if len(snippet) > 200 {
+		snippet = snippet[:200] + "…"
+	}
+	if snippet == "" {
+		snippet = "（空响应）"
+	}
+
+	msg := fmt.Sprintf("%s 返回的不是 JSON（HTTP %d", what, resp.StatusCode)
+	if ct != "" {
+		msg += ", " + ct
+	}
+	msg += "）：" + snippet
+	if strings.Contains(ct, "html") || strings.HasPrefix(snippet, "<") {
+		msg += "\n收到的是一个网页而不是接口响应。多半是接口地址填得不对，" +
+			"或者这个网关不提供该接口——去设置页确认一下地址"
+	}
+	return errors.New(msg)
 }
 
 // apiError 把服务端的错误体翻译成能照着做的中文提示。

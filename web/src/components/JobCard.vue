@@ -3,12 +3,28 @@ import { computed } from 'vue'
 import { NProgress, NButton } from 'naive-ui'
 import { RouterLink } from 'vue-router'
 import { fileURL } from '../api/client'
+import { workflows } from '../store'
 import type { Job } from '../api/types'
 
 const props = defineProps<{ job: Job }>()
 defineEmits<{ cancel: [string] }>()
 
 const done = computed(() => props.job.status === 'succeeded')
+
+// 产出的是材质还是图片，按任务自己的工作流判定，不能跟着生成台当前选的档走：
+// 任务列表是不分档的，切到"材质"档时那些图片任务还在列表里，跟着档位走
+// 会把它们全渲染成材质，点进去是个不存在的详情页。
+const isImage = computed(
+  () => workflows.value.find((w) => w.id === props.job.workflow_id)?.kind === 'image',
+)
+const link = computed(() =>
+  isImage.value ? `/picture/${props.job.material_id}` : `/material/${props.job.material_id}`,
+)
+const thumb = computed(() =>
+  isImage.value
+    ? `/api/pictures/${props.job.material_id}/file`
+    : fileURL(props.job.material_id, 'basecolor.png'),
+)
 const bad = computed(() => props.job.status === 'failed' || props.job.status === 'canceled')
 const busy = computed(() => props.job.status === 'queued' || props.job.status === 'running')
 
@@ -33,8 +49,8 @@ const tone = computed(() => {
 <template>
   <div class="card dt-panel">
     <div class="thumb dt-swatch">
-      <RouterLink v-if="done" :to="`/material/${job.material_id}`" class="thumblink">
-        <img :src="fileURL(job.material_id, 'basecolor.png')" alt="" loading="lazy" />
+      <RouterLink v-if="done" :to="link" class="thumblink">
+        <img :src="thumb" alt="" loading="lazy" />
       </RouterLink>
       <div v-else class="placeholder" :class="{ 'dt-sheen': busy }">
         <span :style="{ color: tone.color }" class="state">{{ tone.text }}</span>
@@ -58,8 +74,8 @@ const tone = computed(() => {
       <p v-if="bad && job.error" class="err" :title="job.error">{{ job.error }}</p>
 
       <div class="actions">
-        <RouterLink v-if="done" :to="`/material/${job.material_id}`">
-          <NButton size="tiny" tertiary>查看通道</NButton>
+        <RouterLink v-if="done" :to="link">
+          <NButton size="tiny" tertiary>{{ isImage ? '查看大图' : '查看通道' }}</NButton>
         </RouterLink>
         <NButton v-if="busy" size="tiny" tertiary @click="$emit('cancel', job.id)">取消</NButton>
       </div>

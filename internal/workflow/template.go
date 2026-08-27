@@ -173,11 +173,34 @@ type Source struct {
 	// Roles 把 API 请求字段映射到参数键，形如 {"prompt": "prompt", "size": "resolution"}。
 	// 认得的字段：model、prompt、size、quality、background、reference。
 	Roles map[string]string `json:"roles"`
+
+	// DirectOutput 为 true 时，云端拿回来的图**就是**最终产物，不再提交给
+	// ComfyUI 跑一遍。
+	//
+	// 纯云端出图（不做 PBR 分解、不做无缝重整）走这条：整条链路上根本没有
+	// ComfyUI 的事，硬要塞一张空图给它跑只是浪费时间，还会让"ComfyUI 没装好
+	// 就不能用云端出图"这种莫名其妙的依赖成立。
+	DirectOutput bool `json:"direct_output,omitempty"`
 }
+
+// Kind 决定这条管线产出什么。
+type Kind string
+
+const (
+	// KindMaterial 产出一整套 PBR 通道 + manifest，给 UE 用。缺省值。
+	KindMaterial Kind = "material"
+	// KindImage 产出单张图片。
+	//
+	// 走同一套模板机制而不是另开一条路：表单驱动、参数注入、队列、取消、
+	// 环境自检全都是现成的，另起炉灶等于把这些再写一遍。
+	KindImage Kind = "image"
+)
 
 // Meta 是 <id>.params.json 的内容。
 type Meta struct {
-	ID          string `json:"id"`
+	ID   string `json:"id"`
+	Kind Kind   `json:"kind"`
+
 	Version     int    `json:"version"`
 	Name        string `json:"name"`
 	Style       string `json:"style"`
@@ -271,6 +294,25 @@ func loadTemplate(dir, paramsFile string) (*Template, error) {
 	if meta.ID == "" {
 		return nil, fmt.Errorf("%s 缺少 id 字段", paramsFile)
 	}
+	if meta.Kind == "" {
+		meta.Kind = KindMaterial
+	}
+	if meta.Kind != KindMaterial && meta.Kind != KindImage {
+		return nil, fmt.Errorf("%s 的 kind 只能是 material 或 image，收到 %q", paramsFile, meta.Kind)
+	}
+
+	// 纯云端出图没有节点图可言，模板文件那一步整个跳过。
+	if meta.Direct() {
+		if len(meta.Outputs) > 0 {
+			return nil, fmt.Errorf("工作流 %s 是纯云端直出，不该声明 outputs", meta.ID)
+		}
+		t := &Template{Meta: meta}
+		if err := validateDirect(&meta); err != nil {
+			return nil, fmt.Errorf("工作流 %s: %w", meta.ID, err)
+		}
+		return t, nil
+	}
+
 	ref := meta.TemplateRef
 	if ref == "" {
 		ref = strings.TrimSuffix(paramsFile, ".params.json") + ".json"
@@ -355,6 +397,38 @@ func validate(m *Meta, g Graph) error {
 	return validateSource(m)
 }
 
+// Direct 报告这条管线是不是"云端拿回来就是成品"，全程不碰 ComfyUI。
+func (m *Meta) Direct() bool {
+	return m.Source != nil && m.Source.DirectOutput
+}
+
+// validateDirect 校验纯云端直出的声明。
+//
+// 它没有节点图，所以参数不能有 target，只能靠 source.roles 起作用；
+// 这里挡住那些"写了 target 却永远不会被注入"的声明——那种错很难自己发现，
+// 界面上参数照常显示，改了却什么都不影响。
+func validateDirect(m *Meta) error {
+	if m.Kind != KindImage {
+		return fmt.Errorf("direct_output 只对 kind=image 有意义")
+	}
+	if err := validateSource(m); err != nil {
+		return err
+	}
+	forSource := map[string]bool{}
+	for _, key := range m.Source.Roles {
+		forSource[key] = true
+	}
+	for _, p := range m.AllParams() {
+		if len(p.targets()) > 0 {
+			return fmt.Errorf("参数 %s 声明了 target，但这条管线没有节点图", p.Key)
+		}
+		if !forSource[p.Key] && !p.Hidden {
+			return fmt.Errorf("参数 %s 既不在 source.roles 里，也没有别的用处", p.Key)
+		}
+	}
+	return nil
+}
+
 func validateSource(m *Meta) error {
 	s := m.Source
 	if s == nil {
@@ -370,11 +444,14 @@ func validateSource(m *Meta) error {
 	for _, p := range m.AllParams() {
 		keys[p.Key] = true
 	}
-	if s.ImageParam == "" {
-		return fmt.Errorf("source 缺少 image_param")
-	}
-	if !keys[s.ImageParam] {
-		return fmt.Errorf("source.image_param %q 不是本工作流声明过的参数", s.ImageParam)
+	// 直出没有节点图，也就没有"把文件名注入进去"这一步。
+	if !s.DirectOutput {
+		if s.ImageParam == "" {
+			return fmt.Errorf("source 缺少 image_param")
+		}
+		if !keys[s.ImageParam] {
+			return fmt.Errorf("source.image_param %q 不是本工作流声明过的参数", s.ImageParam)
+		}
 	}
 	known := map[string]bool{
 		"model": true, "prompt": true, "size": true,

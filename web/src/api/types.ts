@@ -46,8 +46,12 @@ export interface SourceSpec {
   roles: Record<string, string>
 }
 
+/** material = 一整套 PBR 通道；image = 单张图片。 */
+export type WorkflowKind = 'material' | 'image'
+
 export interface WorkflowMeta {
   id: string
+  kind: WorkflowKind
   version: number
   name: string
   style: 'realistic' | 'stylized' | string
@@ -323,7 +327,13 @@ export interface CheckResult {
 
 export interface RuntimeConfig {
   config_path: string
-  imagen: { proxy: string; openai_base_url: string; flatten: number }
+  imagen: {
+    proxy: string
+    openai_base_url: string
+    flatten: number
+    refine_model: string
+    refine_model_default: string
+  }
   comfy: {
     mode: 'managed' | 'attach'
     base_url: string
@@ -331,6 +341,7 @@ export interface RuntimeConfig {
     main_py: string
     extra_args: string[] | null
     auto_restart: boolean
+    reserve_vram_gb: number
     python_exists: boolean
     python_detail: string
     main_py_exists: boolean
@@ -348,12 +359,81 @@ export interface ConfigPatch {
   proxy?: string
   openai_base_url?: string
   flatten?: number
+  refine_model?: string
   comfy_mode?: string
   comfy_base_url?: string
   comfy_python?: string
   comfy_main_py?: string
   comfy_extra_args?: string[]
   comfy_auto_restart?: boolean
+  comfy_reserve_vram?: number
+}
+
+/** 一张生成出来的图片（不是材质套装）。 */
+export interface Picture {
+  id: string
+  name: string
+  workflow_id: string
+  prompt: string
+  negative?: string
+  seed: number
+  width: number
+  height: number
+  provider?: string
+  model?: string
+  cost_usd?: number
+  favorite: boolean
+  tags?: string[]
+  created_at: string
+}
+
+/** 与图片并排落盘的那份元信息。source 存在即表示复现不了。 */
+export interface PictureMeta {
+  schema: string
+  schema_version: number
+  id: string
+  name: string
+  file: string
+  workflow_id: string
+  prompt: string
+  negative?: string
+  seed: number
+  width: number
+  height: number
+  reference?: string
+  source?: {
+    provider: string
+    model: string
+    size?: string
+    quality?: string
+    revised_prompt?: string
+    input_tokens?: number
+    output_tokens?: number
+    cost_usd?: number
+    elapsed_ms?: number
+  }
+  params?: Record<string, unknown>
+  created_at: string
+}
+
+/** 参考图库里的一条。 */
+export interface RefItem {
+  id: string
+  name: string
+  file: string
+  comfy_name?: string
+  width: number
+  height: number
+  bytes: number
+  origin?: string
+  created_at: string
+}
+
+export interface Refined {
+  prompt: string
+  model: string
+  usage: { input_tokens?: number; output_tokens?: number }
+  elapsed_ms: number
 }
 
 export interface DeployStep {

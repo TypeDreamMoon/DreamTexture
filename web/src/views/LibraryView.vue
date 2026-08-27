@@ -1,12 +1,21 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NInput, NSelect, NSpin, NSwitch } from 'naive-ui'
 import PageHeader from '../components/PageHeader.vue'
 import { api, fileURL } from '../api/client'
-import type { MaterialIndex } from '../api/types'
+import type { MaterialIndex, Picture } from '../api/types'
+
+// 材质与图片分档看：两者的卡片信息完全不同（材质关心风格与分辨率，
+// 图片关心尺寸与花费），混在一个网格里只会互相干扰。
+const kind = ref<'material' | 'picture'>('material')
+const KINDS = [
+  { label: '材质', value: 'material' as const },
+  { label: '图片', value: 'picture' as const },
+]
 
 const items = ref<MaterialIndex[]>([])
+const pics = ref<Picture[]>([])
 const loading = ref(true)
 const query = ref('')
 const style = ref<string | null>(null)
@@ -21,13 +30,20 @@ const STYLES = [
 async function load() {
   loading.value = true
   try {
-    const r = await api.materials({
-      q: query.value.trim() || undefined,
-      style: style.value || undefined,
-      fav: favOnly.value,
-      limit: 120,
-    })
-    items.value = r.materials
+    if (kind.value === 'picture') {
+      pics.value = (await api.pictures({
+        q: query.value.trim() || undefined,
+        fav: favOnly.value,
+        limit: 120,
+      })).pictures
+    } else {
+      items.value = (await api.materials({
+        q: query.value.trim() || undefined,
+        style: style.value || undefined,
+        fav: favOnly.value,
+        limit: 120,
+      })).materials
+    }
   } finally {
     loading.value = false
   }
@@ -39,40 +55,66 @@ watch([query, style, favOnly], () => {
   clearTimeout(timer)
   timer = window.setTimeout(load, 220)
 })
+// 换档要立刻重拉，不走防抖——那是给打字准备的。
+watch(kind, () => load())
+
+const count = computed(() => (kind.value === 'picture' ? pics.value.length : items.value.length))
+const empty = computed(() => count.value === 0)
 
 onMounted(load)
 </script>
 
 <template>
   <div class="dt-page dt-page-wide">
-    <PageHeader title="素材库" desc="生成过的材质套装都在这儿。点开可以三维预览、逐通道检视、把参数回填去再来一张。">
+    <PageHeader
+      title="素材库"
+      :desc="
+        kind === 'material'
+          ? '生成过的材质套装都在这儿。点开可以三维预览、逐通道检视、把参数回填去再来一张。'
+          : '生成过的单张图片。可以收藏、下载，或者直接提升成参考图给下一轮用。'
+      "
+    >
       <template #actions>
-        <span class="count dt-faint dt-mono">{{ items.length }} 项</span>
+        <span class="count dt-faint dt-mono">{{ count }} 项</span>
       </template>
     </PageHeader>
 
     <header class="bar">
+      <div class="kinds">
+        <button
+          v-for="k in KINDS"
+          :key="k.value"
+          class="kind"
+          :class="{ on: kind === k.value }"
+          @click="kind = k.value"
+        >
+          {{ k.label }}
+        </button>
+      </div>
       <NInput
         v-model:value="query"
         placeholder="按名称或提示词搜索"
         clearable
         class="search"
       />
-      <NSelect v-model:value="style" :options="STYLES" class="pick" />
+      <NSelect v-if="kind === 'material'" v-model:value="style" :options="STYLES" class="pick" />
       <label class="fav">
         <NSwitch v-model:value="favOnly" size="small" />
         <span class="dt-muted">只看收藏</span>
       </label>
     </header>
 
-    <div v-if="loading && !items.length" class="center"><NSpin /></div>
+    <div v-if="loading && empty" class="center"><NSpin /></div>
 
-    <div v-else-if="!items.length" class="empty dt-faint">
-      <p>{{ query || favOnly || style ? '没有匹配的素材。' : '素材库还是空的。' }}</p>
+    <div v-else-if="empty" class="empty dt-faint">
+      <p>
+        {{ query || favOnly || style ? '没有匹配的内容。'
+           : kind === 'material' ? '还没有生成过材质。' : '还没有生成过图片。' }}
+      </p>
       <RouterLink to="/generate" class="link">去生成台</RouterLink>
     </div>
 
-    <div v-else class="grid">
+    <div v-else-if="kind === 'material'" class="grid">
       <RouterLink
         v-for="(m, i) in items"
         :key="m.id"
@@ -92,6 +134,28 @@ onMounted(load)
         </span>
       </RouterLink>
     </div>
+
+    <div v-else class="grid">
+      <RouterLink
+        v-for="(p, i) in pics"
+        :key="p.id"
+        :to="`/picture/${p.id}`"
+        class="card dt-panel dt-enter"
+        :style="{ animationDelay: `${Math.min(i, 10) * 30}ms` }"
+      >
+        <span class="thumb dt-swatch">
+          <img :src="`/api/pictures/${p.id}/file`" alt="" loading="lazy" />
+        </span>
+        <span class="meta">
+          <span class="name">{{ p.name }}</span>
+          <span class="sub dt-faint dt-mono">
+            {{ p.width }}×{{ p.height }}
+            <template v-if="p.cost_usd"> · ${{ p.cost_usd.toFixed(3) }}</template>
+            <span v-if="p.favorite" class="star">★</span>
+          </span>
+        </span>
+      </RouterLink>
+    </div>
   </div>
 </template>
 
@@ -102,6 +166,35 @@ onMounted(load)
   gap: 12px;
   margin-bottom: 16px;
   flex-wrap: wrap;
+}
+.kinds {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--dt-radius);
+  background: var(--dt-surface2);
+  flex: none;
+}
+.kind {
+  font: inherit;
+  font-size: var(--dt-fs-base);
+  padding: 4px 16px;
+  border: none;
+  border-radius: calc(var(--dt-radius) - 2px);
+  background: transparent;
+  color: var(--dt-ink-muted);
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease;
+}
+.kind:hover {
+  color: var(--dt-ink);
+}
+.kind.on {
+  background: var(--dt-surface);
+  color: var(--dt-accent);
+  font-weight: 500;
 }
 .search {
   max-width: 320px;

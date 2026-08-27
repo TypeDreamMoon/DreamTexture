@@ -24,6 +24,11 @@ func repoWorkflows(t *testing.T) *Registry {
 // 这条测试是模板声明与模板本体对不上时的第一道拦截。
 func TestAllTemplatesRenderWithDefaults(t *testing.T) {
 	for _, tpl := range repoWorkflows(t).List() {
+		// 直出的没有节点图，由 image_test.go 单独覆盖
+		if tpl.Meta.Direct() {
+			t.Logf("%-18s 纯云端直出，无节点图", tpl.Meta.ID)
+			continue
+		}
 		r, err := tpl.Render(map[string]any{}, "probe")
 		if err != nil {
 			t.Errorf("%s 渲染失败: %v", tpl.Meta.ID, err)
@@ -41,7 +46,9 @@ func TestAPISourceTemplatesBothModes(t *testing.T) {
 	reg := repoWorkflows(t)
 	found := 0
 	for _, tpl := range reg.List() {
-		if tpl.Meta.Source == nil {
+		// 只看「云端出底图 + 本地做 PBR 分解」那两条；
+		// 纯图片管线没有无缝重整可言，也没有节点图
+		if tpl.Meta.Source == nil || tpl.Meta.Kind != KindMaterial {
 			continue
 		}
 		found++
@@ -93,7 +100,8 @@ func TestAPISourceTemplatesBothModes(t *testing.T) {
 func TestAPISourcePromptKeepsAffixes(t *testing.T) {
 	for _, tpl := range repoWorkflows(t).List() {
 		src := tpl.Meta.Source
-		if src == nil {
+		// 只对材质管线成立：普通出图不该被平光约束限死画面
+		if src == nil || tpl.Meta.Kind != KindMaterial {
 			continue
 		}
 		key := src.Roles["prompt"]

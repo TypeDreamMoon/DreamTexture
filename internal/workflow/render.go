@@ -55,6 +55,11 @@ func (t *Template) Resolve(values map[string]any) (map[string]any, error) {
 // 既避免不同任务的产物互相覆盖，也让 ComfyUI 的节点缓存不会把旧任务的文件名
 // 当成新任务的产物报回来。
 func (t *Template) Render(values map[string]any, outPrefix string) (*Rendered, error) {
+	// 直出的模板没有节点图，走到这里说明调用方选错了路径。
+	// 不拦的话报出来的是 "unexpected end of JSON input"，看不出是怎么回事。
+	if t.Meta.Direct() {
+		return nil, fmt.Errorf("工作流 %s 是纯云端直出，没有节点图可渲染", t.Meta.ID)
+	}
 	g, err := t.graph()
 	if err != nil {
 		return nil, err

@@ -41,6 +41,17 @@ var Providers = []Provider{
 		EndpointHelp: "改成兼容网关（自建中转、Azure、第三方代理）的地址。" +
 			"注意：你的令牌和图像都会经过这个地址，只填你信得过的",
 	},
+	// 文本模型单列一项，因为出图网关不一定提供对话接口。
+	//
+	// 实测遇到的情况：某个只做图像的中转，/models 和 /images/generations 都正常，
+	// 但 /chat/completions 返回的是它自己的前端页面（还带着 200）。这时提示词
+	// 扩写必须能指到别处，否则这个功能在这类网关上是死的。两项都留空就沿用 openai。
+	{ID: "openai-text", Label: "文本模型（提示词扩写）",
+		Help:            "选填。留空则沿用上面的 OpenAI 令牌。只有当扩写要走另一个服务时才填",
+		Endpoint:        true,
+		EndpointDefault: "（沿用上面的 OpenAI 地址）",
+		EndpointHelp:    "选填。出图网关不提供对话接口时填这里——扩写会改走它，出图不受影响",
+	},
 }
 
 func providerByID(id string) (Provider, bool) {

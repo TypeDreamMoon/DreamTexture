@@ -1,0 +1,93 @@
+{
+  "id": "cloud-image-v1",
+  "kind": "image",
+  "version": 1,
+  "name": "云端出图",
+  "style": "image",
+  "description": "直接用云端模型出一张图，不做 PBR 分解、不走本地 ComfyUI。适合出概念图、参考图，或者需要图内文字与符号的场合。",
+  "resolution": 1024,
+  "tileable": false,
+  "source": {
+    "kind": "api",
+    "provider": "openai",
+    "direct_output": true,
+    "roles": {
+      "model": "api_model",
+      "prompt": "prompt",
+      "size": "api_size",
+      "quality": "api_quality",
+      "background": "api_background",
+      "reference": "reference"
+    }
+  },
+  "model_requirements": [],
+  "node_packs": [],
+  "params": [
+    {
+      "key": "prompt",
+      "label": "提示词",
+      "type": "string",
+      "multiline": true,
+      "default": "",
+      "note": "普通出图不加任何固定前后缀——材质管线那套平光约束是给 PBR 分解准备的，用在这儿只会限制画面"
+    },
+    {
+      "key": "api_model",
+      "label": "模型",
+      "type": "string",
+      "widget": "imagen-model",
+      "default": ""
+    },
+    {
+      "key": "api_size",
+      "label": "尺寸",
+      "type": "enum",
+      "options": [
+        "1024x1024",
+        "1024x1536",
+        "1536x1024",
+        "2048x2048",
+        "1152x2048",
+        "2048x1152",
+        "2880x2880",
+        "2160x3840",
+        "3840x2160"
+      ],
+      "default": "1024x1024",
+      "note": "正方形最大 2880²；更大只能走非正方形（3840x2160）"
+    },
+    {
+      "key": "api_quality",
+      "label": "画质档",
+      "type": "enum",
+      "options": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "default": "medium",
+      "note": "直接决定花费与耗时。high 档单张要两三分钟"
+    },
+    {
+      "key": "reference",
+      "label": "参考图",
+      "type": "image",
+      "note": "给了就走图像编辑接口，在它基础上改"
+    }
+  ],
+  "advanced": [
+    {
+      "key": "api_background",
+      "label": "背景",
+      "type": "enum",
+      "options": [
+        "auto",
+        "opaque",
+        "transparent"
+      ],
+      "default": "auto",
+      "note": "transparent 需要模型支持，且只在 PNG/WebP 下有效"
+    }
+  ],
+  "outputs": {}
+}

@@ -168,11 +168,19 @@ func (s *Server) setEndpoint(w http.ResponseWriter, r *http.Request) {
 	if origin != "" {
 		msg = "已改为 " + origin
 	}
-	if p, ok := s.Imagen.Get(body.Provider); ok && p.Configured() {
-		if detail, err := p.Ping(r.Context()); err != nil {
-			msg += "；但当前不通：" + firstLine(err.Error())
-		} else {
-			msg += "；" + detail
+	switch {
+	case body.Provider == refineProvider:
+		// 文本地址没有对应的 Provider 可 Ping，就真扩写一次去探。
+		// 只花几十个 token，换来"填完立刻知道通不通"——这条链路上最常见的
+		// 错误正是地址填得对不上接口，而那要等到用户点扩写才会暴露。
+		msg += "；" + probeRefine(r.Context(), s)
+	default:
+		if p, ok := s.Imagen.Get(body.Provider); ok && p.Configured() {
+			if detail, err := p.Ping(r.Context()); err != nil {
+				msg += "；但当前不通：" + firstLine(err.Error())
+			} else {
+				msg += "；" + detail
+			}
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"origin": origin, "message": msg})

@@ -43,6 +43,8 @@ const comfyMainPy = ref('')
 const comfyBaseURL = ref('')
 const comfyMode = ref<'managed' | 'attach'>('managed')
 const autoRestart = ref(true)
+const refineModel = ref('')
+const reserveVRAM = ref(1)
 
 const providers = computed(() => settings.value?.token_providers ?? [])
 
@@ -77,6 +79,8 @@ async function load() {
   comfyBaseURL.value = c.comfy.base_url
   comfyMode.value = c.comfy.mode
   autoRestart.value = c.comfy.auto_restart
+  refineModel.value = c.imagen.refine_model
+  reserveVRAM.value = c.comfy.reserve_vram_gb
 }
 onMounted(load)
 
@@ -245,7 +249,14 @@ function hostOf(u?: string): string {
                 :loading="busy === 'endpoint-' + p.id"
                 @click="saveEndpoint(p.id)"
               >
-                {{ endpointInput[p.id] ? '保存' : '恢复官方' }}
+                <!-- 没有官方地址可回退的项（例如"沿用上面那套"），说"清除"才对 -->
+              {{
+                endpointInput[p.id]
+                  ? '保存'
+                  : p.endpoint_default?.startsWith('http')
+                    ? '恢复官方'
+                    : '清除'
+              }}
               </NButton>
             </div>
           </SettingRow>
@@ -279,8 +290,31 @@ function hostOf(u?: string): string {
       </div>
 
       <!-- ── 云端底图 ── -->
-      <p class="dt-label sec">云端底图</p>
+      <p class="dt-label sec">云端</p>
       <div class="rows">
+        <SettingRow
+          icon="wand"
+          title="提示词扩写模型"
+          desc="生成台上「让模型扩写」用的文本模型。走的是同一个网关、同一把令牌，但通常不是出图那个模型"
+          stack
+        >
+          <div class="line">
+            <NInput
+              v-model:value="refineModel"
+              size="small"
+              :placeholder="cfg.imagen.refine_model_default"
+              clearable
+            />
+            <NButton
+              size="small"
+              :loading="busy === 'refine'"
+              @click="save({ refine_model: refineModel }, 'refine')"
+            >
+              保存
+            </NButton>
+          </div>
+        </SettingRow>
+
         <SettingRow
           icon="image"
           title="亮度场压平"
@@ -446,6 +480,32 @@ function hostOf(u?: string): string {
             v-model:value="autoRestart"
             @update:value="save({ comfy_auto_restart: autoRestart }, 'autorestart')"
           />
+        </SettingRow>
+
+        <SettingRow
+          icon="gauge"
+          title="显存余量"
+          desc="留给别的程序的显存。同时开着虚幻编辑器时把它调到 2~3 GB：ComfyUI 只在装载模型那一刻看一眼空闲显存，之后不再复查；被吃干净之后 Windows 显卡驱动会悄悄回退到内存硬算，不报错，但慢几十倍——症状就是进度条卡住不动"
+          restart
+          stack
+        >
+          <div class="line">
+            <NSlider
+              v-model:value="reserveVRAM"
+              :min="0"
+              :max="8"
+              :step="0.5"
+              :marks="{ 0: '不留', 2: '2G', 4: '4G', 8: '8G' }"
+              style="flex: 1"
+            />
+            <NButton
+              size="small"
+              :loading="busy === 'vram'"
+              @click="save({ comfy_reserve_vram: reserveVRAM }, 'vram')"
+            >
+              保存
+            </NButton>
+          </div>
         </SettingRow>
       </div>
 

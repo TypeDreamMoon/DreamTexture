@@ -167,7 +167,7 @@ func run() error {
 
 	srv := &api.Server{
 		Sup: sup, Reg: reg, Store: st, Runner: runner, Bus: bus,
-		Log: log, OutputDir: cfg.OutputDir,
+		Log: log, OutputDir: cfg.OutputDir, DataDir: cfg.DataDir,
 		Models: models, Downloads: downloads, Secrets: secrets,
 		Nodes: nodeMgr, Catalog: cat, Imagen: imagenReg, Logs: logs, Settings: live,
 		Deploy: deploy.New(logs),

@@ -184,6 +184,52 @@ ComfyUI 的 IMAGE 是 `[B, H, W, C]`，但 ComfyUI-Chord 有两处返回 `[B, H,
 不改上游文件（升级会丢），用本仓库的 `DT_EnsureImageShape` 在中间过一道。
 接入新的 PBR 估计模型时要重新检查这一点。
 
+### 显存被别的程序占了 → 不报错，改用内存硬算
+
+**症状**：GPU 占用 99%、显存打满、进度条停在某个百分比再也不动，日志最后一行
+是 `Requested to load AutoencoderKL / loaded completely`，然后什么都不再输出。
+等半小时也不会结束，也不会报错。
+
+**成因**：ComfyUI 只在**装载模型那一刻**看一眼空闲显存，之后不再复查。等它把
+显存吃到只剩几百兆，别的程序（这台机器上典型是**虚幻编辑器**）一涨、
+或者解码环节要一大块连续显存，Windows 显卡驱动的"系统内存回退"就会接管——
+它不抛 OOM，而是改用系统内存走 PCIe 算，慢几十倍。于是既没有报错也没有进展。
+
+实测过的一次：ComfyUI 报"可用 3521 MB"，而 `nvidia-smi` 显示 15488/16375 MiB
+已被占用，torch 自己的池握着 9408 MB。同一张图，关掉占显存的程序之后 **12 秒**跑完。
+
+**三层处理**：
+
+1. `--reserve-vram`（配置项 `comfy.reserve_vram_gb`，默认 1）。让 ComfyUI
+   主动把模型换出到内存，而不是等驱动去悄悄降级。同时开着虚幻编辑器时调到 2~3。
+2. 看门狗（`internal/job/stall.go`）。8 分钟没有任何动静就判定卡死、打断 ComfyUI、
+   把任务判负，并现场读一次显存写进报错——不打断的话后面排队的任务全跟着陪葬。
+   阈值定得宽是因为没有进度事件的环节确实存在且合法（VAEDecode、CHORD 分解、
+   大图落盘都会一声不吭跑上几十秒），但差着一个数量级。
+3. 自检里单列一条「显存」（`internal/api/vram.go`），并用 `nvidia-smi` 点名
+   正在用显卡的程序。看见 `UnrealEditor` 比看见一个数字有用得多。
+
+> WDDM 驱动模型下 `nvidia-smi` 查不到每个进程占了多少显存（一律 N/A），
+> 所以只报名字，不编造数值。
+
+**还想更彻底**：NVIDIA 控制面板 →「管理 3D 设置」→「CUDA - 系统内存回退策略」
+改成「优先不使用系统内存回退」。改完之后显存不够会**立刻报 OOM**，
+而不是无声地慢几十倍。这是驱动级设置，程序改不了，只能手动配。
+
+### 不要自己设 `PYTORCH_CUDA_ALLOC_CONF`
+
+`cuda_malloc.py` 会往这个环境变量后面**追加** `backend:cudaMallocAsync`：
+
+```python
+env_var = os.environ.get('PYTORCH_CUDA_ALLOC_CONF', None)
+if env_var is None: env_var = "backend:cudaMallocAsync"
+else:               env_var += ",backend:cudaMallocAsync"
+```
+
+而 `expandable_segments` 只对原生缓存分配器有效，拼在一起等于白写——
+torch 静默忽略，看不出任何异常。想换分配器就往 `extra_args` 里加
+`--disable-cuda-malloc`，那才是 ComfyUI 认的开关。
+
 ## 工作流模板约定
 
 - 模板是 ComfyUI 导出的 **API format** JSON，与参数声明 sidecar `<id>.params.json` 成对存放。

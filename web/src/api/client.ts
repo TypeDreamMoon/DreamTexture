@@ -16,6 +16,10 @@ import type {
   LogLine,
   Manifest,
   MaterialIndex,
+  Picture,
+  PictureMeta,
+  RefItem,
+  Refined,
   RuntimeConfig,
   Settings,
   WorkflowMeta,
@@ -110,6 +114,49 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ favorite }),
     }),
+
+  // ---- 图片 ----
+  pictures: (q: { q?: string; fav?: boolean; limit?: number } = {}) => {
+    const p = new URLSearchParams()
+    if (q.q) p.set('q', q.q)
+    if (q.fav) p.set('fav', '1')
+    if (q.limit) p.set('limit', String(q.limit))
+    return request<{ pictures: Picture[] }>(`/api/pictures?${p}`)
+  },
+  picture: (id: string) => request<{ picture: Picture; meta: PictureMeta }>(`/api/pictures/${id}`),
+  favoritePicture: (id: string, favorite: boolean) =>
+    request<{ ok: boolean }>(`/api/pictures/${id}/favorite`, {
+      method: 'POST',
+      body: JSON.stringify({ favorite }),
+    }),
+  deletePicture: (id: string) =>
+    request<{ ok: boolean }>(`/api/pictures/${id}`, { method: 'DELETE' }),
+
+  // ---- 提示词扩写 ----
+  // 只返回结果，不替用户改——扩写完让他自己看一眼再决定用不用。
+  refinePrompt: (prompt: string, purpose: 'texture' | 'image') =>
+    request<Refined>('/api/prompts/refine', {
+      method: 'POST',
+      body: JSON.stringify({ prompt, purpose }),
+    }),
+
+  // ---- 参考图库 ----
+  refs: () => request<{ refs: RefItem[] }>('/api/refs'),
+  refFromPicture: (pictureID: string, name?: string) =>
+    request<{ ref: RefItem }>('/api/refs/from-picture', {
+      method: 'POST',
+      body: JSON.stringify({ picture_id: pictureID, name }),
+    }),
+  renameRef: (id: string, name: string) =>
+    request<{ ok: boolean }>(`/api/refs/${id}/rename`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  deleteRef: (id: string) => request<{ ok: boolean }>(`/api/refs/${id}`, { method: 'DELETE' }),
+  // 每次用都重新上传进 ComfyUI：它可能被清空或换了实例，
+  // 记着上次的文件名会在提交工作流时才炸，报错还看不出跟参考图库有关。
+  useRef: (id: string) =>
+    request<{ name: string; ref: RefItem }>(`/api/refs/${id}/use`, { method: 'POST' }),
 
   models: (refresh = false) =>
     request<{ inventory: Inventory; missing: number; downloads: Download[] }>(

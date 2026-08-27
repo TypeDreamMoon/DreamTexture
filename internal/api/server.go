@@ -39,6 +39,7 @@ type Server struct {
 	Bus       *job.Bus
 	Log       *slog.Logger
 	OutputDir string
+	DataDir   string
 	Models    *model.Manager
 	Downloads *model.Downloader
 	Secrets   *model.Secrets
@@ -78,6 +79,22 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/materials/{id}", s.getMaterial)
 		r.Post("/materials/{id}/favorite", s.favoriteMaterial)
 		r.Get("/materials/{id}/files/{name}", s.materialFile)
+
+		r.Get("/pictures", s.listPictures)
+		r.Get("/pictures/{id}", s.getPicture)
+		r.Get("/pictures/{id}/file", s.pictureFile)
+		r.Post("/pictures/{id}/favorite", s.favoritePicture)
+		r.Delete("/pictures/{id}", s.deletePicture)
+
+		r.Post("/prompts/refine", s.refinePrompt)
+
+		r.Get("/refs", s.listRefs)
+		r.Post("/refs", s.addRef)
+		r.Post("/refs/from-picture", s.refFromPicture)
+		r.Get("/refs/{id}/file", s.refFile)
+		r.Post("/refs/{id}/rename", s.renameRef)
+		r.Post("/refs/{id}/use", s.useRef)
+		r.Delete("/refs/{id}", s.deleteRef)
 
 		r.Get("/models", s.models)
 		r.Get("/models/downloads", s.listDownloads)

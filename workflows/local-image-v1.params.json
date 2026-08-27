@@ -1,0 +1,161 @@
+{
+  "id": "local-image-v1",
+  "kind": "image",
+  "version": 1,
+  "name": "本地出图",
+  "style": "image",
+  "description": "用本机 SDXL 出一张图，不做 PBR 分解也不做无缝。不花钱、没有内容审核、种子可复现，代价是提示词遵循度不如云端模型。",
+  "template": "local-image-v1.json",
+  "resolution": 1024,
+  "tileable": false,
+  "model_requirements": [
+    {
+      "kind": "checkpoint",
+      "file": "Juggernaut-XL-v9.safetensors",
+      "dir": "checkpoints",
+      "size_bytes": 7105348188,
+      "source": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
+      "download_url": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+      "auth": "none"
+    }
+  ],
+  "node_packs": [],
+  "params": [
+    {
+      "key": "prompt",
+      "label": "提示词",
+      "type": "string",
+      "multiline": true,
+      "target": "dt.positive.text",
+      "default": ""
+    },
+    {
+      "key": "negative",
+      "label": "负面词",
+      "type": "string",
+      "multiline": true,
+      "target": "dt.negative.text",
+      "default": "lowres, bad anatomy, worst quality, watermark, text, signature"
+    },
+    {
+      "key": "width",
+      "label": "宽",
+      "type": "enum",
+      "options": [
+        768,
+        896,
+        1024,
+        1152,
+        1344
+      ],
+      "target": "dt.latent.width",
+      "default": 1024
+    },
+    {
+      "key": "height",
+      "label": "高",
+      "type": "enum",
+      "options": [
+        768,
+        896,
+        1024,
+        1152,
+        1344
+      ],
+      "target": "dt.latent.height",
+      "default": 1024,
+      "note": "SDXL 在总像素接近 1024² 时最稳；偏离太远容易出双头、重复构图"
+    },
+    {
+      "key": "seed",
+      "label": "种子",
+      "type": "int",
+      "target": "dt.sampler.seed",
+      "default": -1,
+      "note": "-1 为随机。本地出图的种子是真能复现的，和云端不一样"
+    },
+    {
+      "key": "reference",
+      "label": "参考图",
+      "type": "image",
+      "target": "dt.reference_image.image",
+      "rewire_when_set": {
+        "node": "dt.sampler",
+        "input": "latent_image",
+        "source": "dt.reference_encode",
+        "slot": 0
+      },
+      "drop_when_empty": [
+        "dt.reference_image",
+        "dt.reference_scale",
+        "dt.reference_encode"
+      ],
+      "note": "留空为纯文生图。给了就在它基础上重绘，幅度在高级参数里调"
+    }
+  ],
+  "advanced": [
+    {
+      "key": "steps",
+      "label": "步数",
+      "type": "int",
+      "min": 10,
+      "max": 60,
+      "target": "dt.sampler.steps",
+      "default": 28
+    },
+    {
+      "key": "cfg",
+      "label": "CFG",
+      "type": "float",
+      "min": 1,
+      "max": 15,
+      "target": "dt.sampler.cfg",
+      "default": 6.5
+    },
+    {
+      "key": "denoise",
+      "label": "重绘幅度",
+      "type": "float",
+      "min": 0.1,
+      "max": 1.0,
+      "target": "dt.sampler.denoise",
+      "default": 1.0,
+      "note": "仅在给了参考图时有意义"
+    },
+    {
+      "key": "reference_size",
+      "label": "参考图缩放",
+      "type": "enum",
+      "options": [
+        768,
+        1024,
+        1152
+      ],
+      "target": [
+        "dt.reference_scale.width",
+        "dt.reference_scale.height"
+      ],
+      "default": 1024
+    },
+    {
+      "key": "sampler",
+      "label": "采样器",
+      "type": "string",
+      "target": "dt.sampler.sampler_name",
+      "default": "dpmpp_2m"
+    },
+    {
+      "key": "scheduler",
+      "label": "调度器",
+      "type": "string",
+      "target": "dt.sampler.scheduler",
+      "default": "karras"
+    }
+  ],
+  "outputs": {
+    "image": {
+      "node": "dt.out.image",
+      "colorspace": "srgb"
+    }
+  }
+}

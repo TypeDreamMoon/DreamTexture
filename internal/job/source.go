@@ -71,13 +71,46 @@ func (r *Runner) checkSource(tpl *workflow.Template, params map[string]any) erro
 func (r *Runner) fetchSource(ctx context.Context, j *store.Job, tpl *workflow.Template,
 	resolved map[string]any) (string, *SourceInfo, error) {
 
+	res, info, err := r.callSource(ctx, j, tpl, resolved)
+	if err != nil {
+		return "", nil, err
+	}
+
+	img := res.Image
+	if flat, rep, err := imagen.FlattenLuminance(img, r.flatten()); err != nil {
+		// 压平失败不该让整个任务垮掉：底图本身是好的，大不了带着暗角继续。
+		r.log.Warn("底图亮度场压平失败，按原图继续", "job", j.ID, "err", err)
+	} else {
+		img = flat
+		info.Flatten = &rep
+		if rep.Applied {
+			r.log.Info("已压平底图亮度场", "job", j.ID,
+				"边缘中心比", fmt.Sprintf("%.4f→%.4f", rep.Falloff, rep.FalloffAfter))
+		}
+	}
+
+	name := "dt_src_" + j.MaterialID + ".png"
+	stored, err := r.sup.Client().UploadImage(ctx, name, img)
+	if err != nil {
+		return "", nil, fmt.Errorf("把底图转存到 ComfyUI 失败: %w", err)
+	}
+	return stored, info, nil
+}
+
+// callSource 只负责向外部服务要一张图，不管拿到之后怎么用。
+//
+// 与 fetchSource 分开：材质管线要把它压平亮度场再转存给 ComfyUI 当底图，
+// 而纯图片直出拿到就是成品——后者做压平反而是错的，那一步是为平铺准备的。
+func (r *Runner) callSource(ctx context.Context, j *store.Job, tpl *workflow.Template,
+	resolved map[string]any) (*imagen.Result, *SourceInfo, error) {
+
 	src := tpl.Meta.Source
 	prov, ok := r.imagen.Get(src.Provider)
 	if !ok {
-		return "", nil, fmt.Errorf("底图来源 %q 未注册", src.Provider)
+		return nil, nil, fmt.Errorf("底图来源 %q 未注册", src.Provider)
 	}
 	if !prov.Configured() {
-		return "", nil, fmt.Errorf("%s 还没配置访问令牌，去「模型 → 设置」里填上", prov.Label())
+		return nil, nil, fmt.Errorf("%s 还没配置访问令牌，去设置页填上", prov.Label())
 	}
 
 	role := func(name string) string {
@@ -100,7 +133,7 @@ func (r *Runner) fetchSource(ctx context.Context, j *store.Job, tpl *workflow.Te
 		Background: role("background"),
 	}
 	if req.Model == "" {
-		return "", nil, fmt.Errorf("没有选择云端模型")
+		return nil, nil, fmt.Errorf("没有选择云端模型")
 	}
 
 	// 参考图走图生图：它此刻在 ComfyUI 的 input 目录里（前端上传时就转存过去了），
@@ -108,7 +141,7 @@ func (r *Runner) fetchSource(ctx context.Context, j *store.Job, tpl *workflow.Te
 	if name := role("reference"); name != "" {
 		data, err := r.sup.Client().View(ctx, comfy.ImageRef{Filename: name, Type: "input"})
 		if err != nil {
-			return "", nil, fmt.Errorf("取回参考图 %s 失败: %w", name, err)
+			return nil, nil, fmt.Errorf("取回参考图 %s 失败: %w", name, err)
 		}
 		req.Reference, req.ReferenceName = data, name
 	}
@@ -124,10 +157,10 @@ func (r *Runner) fetchSource(ctx context.Context, j *store.Job, tpl *workflow.Te
 	if err != nil {
 		var refusal *imagen.Refusal
 		if errors.As(err, &refusal) {
-			return "", nil, fmt.Errorf("云端拒绝了这个提示词：%s\n"+
+			return nil, nil, fmt.Errorf("云端拒绝了这个提示词：%s\n"+
 				"换个说法再试，或改用本地管线——本地没有内容审核", refusal.Reason)
 		}
-		return "", nil, err
+		return nil, nil, err
 	}
 
 	info := &SourceInfo{
@@ -135,28 +168,9 @@ func (r *Runner) fetchSource(ctx context.Context, j *store.Job, tpl *workflow.Te
 		Size: req.Size, Quality: req.Quality, Revised: res.Revised,
 		Usage: &res.Usage, ElapsedMS: res.Elapsed.Milliseconds(),
 	}
-	r.log.Info("云端底图已返回", "job", j.ID, "耗时", res.Elapsed.Round(time.Second),
+	r.log.Info("云端图片已返回", "job", j.ID, "耗时", res.Elapsed.Round(time.Second),
 		"字节", len(res.Image), "花费USD", fmt.Sprintf("%.4f", res.Usage.CostUSD))
-
-	img := res.Image
-	if flat, rep, err := imagen.FlattenLuminance(img, r.flatten()); err != nil {
-		// 压平失败不该让整个任务垮掉：底图本身是好的，大不了带着暗角继续。
-		r.log.Warn("底图亮度场压平失败，按原图继续", "job", j.ID, "err", err)
-	} else {
-		img = flat
-		info.Flatten = &rep
-		if rep.Applied {
-			r.log.Info("已压平底图亮度场", "job", j.ID,
-				"边缘中心比", fmt.Sprintf("%.4f→%.4f", rep.Falloff, rep.FalloffAfter))
-		}
-	}
-
-	name := "dt_src_" + j.MaterialID + ".png"
-	stored, err := r.sup.Client().UploadImage(ctx, name, img)
-	if err != nil {
-		return "", nil, fmt.Errorf("把底图转存到 ComfyUI 失败: %w", err)
-	}
-	return stored, info, nil
+	return res, info, nil
 }
 
 // sourcePrompt 拼出真正送给云端的提示词。

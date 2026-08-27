@@ -20,6 +20,12 @@ const router = createRouter({
       component: () => import('./views/MaterialView.vue'),
       props: true,
     },
+    {
+      path: '/picture/:id',
+      name: 'picture',
+      component: () => import('./views/PictureView.vue'),
+      props: true,
+    },
   ],
 })
 

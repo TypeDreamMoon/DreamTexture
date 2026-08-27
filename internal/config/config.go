@@ -52,6 +52,17 @@ type Comfy struct {
 	AutoRestart bool `json:"auto_restart"`
 	// MaxQueueDepth 超过后 readiness 探针报未就绪；0 表示不限。
 	MaxQueueDepth int `json:"max_queue_depth"`
+
+	// ReserveVRAM 是留给别的程序的显存（GB），转成 ComfyUI 的 --reserve-vram。
+	//
+	// 这台机器上多半还开着虚幻编辑器。ComfyUI 只在装载模型那一刻看一眼空闲显存，
+	// 之后并不复查；等它把显存吃到只剩几百兆，UE 一涨、或者解码环节要一大块连续
+	// 显存，Windows 显卡驱动就会启用"回退到系统内存"——**不报错**，改用内存
+	// 硬算，慢几十倍。表面症状是 GPU 占用 99%、显存满、进度条纹丝不动。
+	//
+	// 留一点余量让 ComfyUI 主动把模型换出到内存，比让驱动去悄悄降级好得多。
+	// 0 表示不留。
+	ReserveVRAM float64 `json:"reserve_vram_gb"`
 }
 
 // Imagen 是外部底图来源的配置。
@@ -74,6 +85,11 @@ type Imagen struct {
 	// 默认开满：云端模型普遍有暗角，不压平的话平铺会出可见网格。
 	// 想保留模型原本的明暗氛围就调低。
 	Flatten float64 `json:"flatten"`
+
+	// RefineModel 是扩写提示词用的文本模型。留空用内置默认值。
+	//
+	// 与图像模型分开配：它们往往不是同一个模型，但走同一个网关、同一把令牌。
+	RefineModel string `json:"refine_model"`
 }
 
 type Config struct {
@@ -127,6 +143,7 @@ func Default() Config {
 			HealthInterval: Duration(10 * time.Second),
 			AutoRestart:    true,
 			MaxQueueDepth:  8,
+			ReserveVRAM:    1,
 		},
 		Imagen: Imagen{Flatten: 1},
 	}

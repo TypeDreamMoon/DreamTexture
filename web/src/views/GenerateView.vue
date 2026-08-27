@@ -27,20 +27,42 @@ const values = ref<Record<string, unknown>>({})
 const submitting = ref(false)
 const currentBatch = ref<string>('')
 
+// 材质 / 图片是两类完全不同的产物，分成两档而不是混在一个预设列表里：
+// 混着的话用户得先认出哪个预设产出什么，而两者的参数、产物、去处都不一样。
+const kind = ref<'material' | 'image'>('material')
+const KINDS = [
+  { label: '材质', value: 'material' as const },
+  { label: '图片', value: 'image' as const },
+]
+
+const kindWorkflows = computed(() => workflows.value.filter((w) => w.kind === kind.value))
+
 const current = computed<WorkflowMeta | undefined>(() =>
   workflows.value.find((w) => w.id === selectedID.value),
 )
 
-const STYLE_LABEL: Record<string, string> = { realistic: '写实', stylized: '手绘' }
+const STYLE_LABEL: Record<string, string> = {
+  realistic: '写实',
+  stylized: '手绘',
+  image: '出图',
+}
 
 const workflowOptions = computed(() =>
-  workflows.value.map((w) => ({
+  kindWorkflows.value.map((w) => ({
     label: w.name,
     value: w.id,
     style: STYLE_LABEL[w.style] ?? w.style,
     cloud: !!w.source,
   })),
 )
+
+// 换档时选中当前档里的第一个预设。
+watch(kind, () => {
+  const list = kindWorkflows.value
+  if (list.length && !list.some((w) => w.id === selectedID.value)) {
+    selectedID.value = list[0]!.id
+  }
+})
 
 // 自己渲染下拉项，好在名字后面挂上风格和"底图在哪出"两个标签。
 // 预设的名字本身已经带了这些信息，但一眼扫下来时标签比读句子快，
@@ -73,7 +95,11 @@ watch(
     } catch {
       want = ''
     }
-    selectedID.value = list.find((w) => w.id === want)?.id ?? list[0]!.id
+    const wf = list.find((w) => w.id === want) ?? list[0]!
+    selectedID.value = wf.id
+    // 回填来自图片详情时要连档一起切过去，否则选中的预设不在当前档里，
+    // 下拉框会显示一个列表里根本没有的值。
+    kind.value = wf.kind === 'image' ? 'image' : 'material'
   },
   { immediate: true },
 )
@@ -254,6 +280,37 @@ const cloudSlow = computed(
 )
 
 const tileFix = computed(() => Number(values.value['tile_fix'] ?? 0))
+
+// ── 提示词扩写 ────────────────────────────────────────────────
+//
+// 扩写完不直接盖掉输入框，先摆出来让用户看一眼再决定。模型有时会自作主张
+// 加东西，直接替换会让人莫名其妙地丢掉自己写的要求。
+const refining = ref(false)
+const refined = ref<{ before: string; after: string; model: string } | null>(null)
+
+async function refine() {
+  const p = String(values.value['prompt'] ?? '').trim()
+  if (!p) {
+    message.warning('先写点什么再让它扩写')
+    return
+  }
+  refining.value = true
+  try {
+    // 材质要带上正交平光可平铺那套硬约束，普通出图不带——
+    // 硬塞平光约束等于把画面限死。
+    const r = await api.refinePrompt(p, kind.value === 'material' ? 'texture' : 'image')
+    refined.value = { before: p, after: r.prompt, model: r.model }
+  } catch (e) {
+    message.error(String((e as Error).message))
+  } finally {
+    refining.value = false
+  }
+}
+
+function acceptRefined() {
+  if (refined.value) values.value['prompt'] = refined.value.after
+  refined.value = null
+}
 </script>
 
 <template>
@@ -269,7 +326,19 @@ const tileFix = computed(() => Number(values.value['tile_fix'] ?? 0))
     <!-- 左：参数 -->
     <section class="panel dt-glass">
       <div class="pad">
-        <p class="dt-label">风格预设</p>
+        <div class="kinds">
+          <button
+            v-for="k in KINDS"
+            :key="k.value"
+            class="kind"
+            :class="{ on: kind === k.value }"
+            @click="kind = k.value"
+          >
+            {{ k.label }}
+          </button>
+        </div>
+
+        <p class="dt-label">{{ kind === 'material' ? '风格预设' : '出图方式' }}</p>
         <NSelect
           v-model:value="selectedID"
           :options="workflowOptions"
@@ -288,6 +357,28 @@ const tileFix = computed(() => Number(values.value['tile_fix'] ?? 0))
           :param="promptParam"
           v-model="values[promptParam.key]"
         />
+
+        <div v-if="promptParam" class="refine-row">
+          <NButton size="tiny" tertiary :loading="refining" @click="refine">
+            让模型扩写
+          </NButton>
+          <span class="tiny dt-faint">
+            {{ kind === 'material' ? '会带上正交平光、可平铺这些硬约束' : '按画面来扩写，不加材质约束' }}
+          </span>
+        </div>
+
+        <div v-if="refined" class="refined dt-panel">
+          <p class="rtitle">
+            扩写结果
+            <span class="dt-faint dt-mono">{{ refined.model }}</span>
+          </p>
+          <p class="rtext">{{ refined.after }}</p>
+          <div class="racts">
+            <NButton size="tiny" type="primary" @click="acceptRefined">用它</NButton>
+            <NButton size="tiny" tertiary @click="refined = null">不用</NButton>
+          </div>
+        </div>
+
         <p v-if="promptParam && (promptParam.prefix || promptParam.suffix)" class="expanded dt-mono">
           {{ fullPrompt }}
         </p>
@@ -415,8 +506,75 @@ const tileFix = computed(() => Number(values.value['tile_fix'] ?? 0))
   border-top: 1px solid var(--dt-border);
 }
 
+/* 材质 / 图片切换。做成分段控件而不是下拉：只有两档，
+   而且这是"我现在要做什么"的选择，值得一眼看见当前在哪一档。 */
+.kinds {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  margin-bottom: 14px;
+  border-radius: var(--dt-radius);
+  background: var(--dt-surface2);
+}
+.kind {
+  flex: 1;
+  font: inherit;
+  font-size: var(--dt-fs-base);
+  padding: 5px 0;
+  border: none;
+  border-radius: calc(var(--dt-radius) - 2px);
+  background: transparent;
+  color: var(--dt-ink-muted);
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease;
+}
+.kind:hover {
+  color: var(--dt-ink);
+}
+.kind.on {
+  background: var(--dt-surface);
+  color: var(--dt-accent);
+  font-weight: 500;
+}
+
 .styles {
   margin-top: 10px;
+}
+
+.refine-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: -8px;
+}
+.refined {
+  padding: 11px 13px;
+  margin-top: -4px;
+  border-left: 2px solid var(--dt-accent);
+}
+.rtitle {
+  margin: 0 0 6px;
+  font-size: var(--dt-fs-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dt-ink-faint);
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+}
+.rtext {
+  margin: 0 0 9px;
+  font-size: var(--dt-fs-sm);
+  line-height: 1.7;
+  color: var(--dt-ink);
+  max-height: 200px;
+  overflow: auto;
+}
+.racts {
+  display: flex;
+  gap: 8px;
 }
 .desc {
   margin: 12px 0 0;
