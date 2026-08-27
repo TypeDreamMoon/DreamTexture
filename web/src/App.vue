@@ -5,37 +5,42 @@ import { NConfigProvider, NMessageProvider, NDialogProvider, NTooltip, darkTheme
 import DtIcon from './components/DtIcon.vue'
 import { darkOverrides, lightOverrides, applyCSSVars } from './theme'
 import { bootstrap, connectEvents, health, wsConnected, activeJobs, activeDownloads } from './store'
+import { migrateSidebar, persisted, readRaw } from './persist'
 
-const dark = ref(matchMedia('(prefers-color-scheme: dark)').matches)
+// 主题：没选过就跟随系统，选过就以用户的选择为准。
+//
+// 用 null 表示"还没表过态"，不能用 false 顶替：那样一个白天用浅色的人
+// 到了晚上系统切深色，界面反而不跟着变了。
+const themePref = persisted<'dark' | 'light' | null>('theme', null, (v) =>
+  v === null || v === 'dark' || v === 'light',
+)
+const systemDark = ref(matchMedia('(prefers-color-scheme: dark)').matches)
+const dark = computed({
+  get: () => (themePref.value === null ? systemDark.value : themePref.value === 'dark'),
+  set: (v: boolean) => (themePref.value = v ? 'dark' : 'light'),
+})
 watch(dark, (v) => applyCSSVars(v), { immediate: true })
+
+const systemTheme = matchMedia('(prefers-color-scheme: dark)')
+const onSystemTheme = (e: MediaQueryListEvent) => (systemDark.value = e.matches)
 
 const route = useRoute()
 let disconnect: (() => void) | null = null
 
 // 收起状态记在本地：这是个人偏好，每次开都要重收一遍很烦。
-// localStorage 在隐私窗口里会抛异常，读不到就走默认。
-let stored: string | null = null
-try {
-  stored = localStorage.getItem('dt.sidebar')
-} catch {
-  /* 读不到就用默认值 */
-}
-const collapsed = ref(stored === 'collapsed')
+//
+// 旧版本存的是 'collapsed' / 'open' 两个裸字符串，不是合法 JSON。就地转一次，
+// 否则老用户的偏好会读不出来，而 userSet 又因为"确实存过"而是 true——
+// 结果是既没恢复成收起，窄窗口自动收起也不再生效，两头落空。
+migrateSidebar()
+const collapsed = persisted<boolean>('sidebar', false)
 
-// 存过就说明用户自己选过，从此以他的选择为准。
+// 用户自己表过态没有。存过就说明表过，从此以他的选择为准。
 //
 // 这一行是必须的：否则 onMounted 里的 onResize 会立刻按窗口宽度把刚读回来的
 // 偏好覆盖掉，"记住收起状态"就成了摆设——而且没有任何报错，只会让人觉得
 // "我明明收起来了怎么每次打开又是展开的"。
-const userSet = ref(stored !== null)
-
-watch(collapsed, (v) => {
-  try {
-    localStorage.setItem('dt.sidebar', v ? 'collapsed' : 'open')
-  } catch {
-    /* 存不了也不影响用 */
-  }
-})
+const userSet = ref(readRaw('sidebar') !== null)
 
 // 窄窗口自动收起，但只在用户还没表过态时。
 const NARROW = 1100
@@ -51,11 +56,13 @@ function toggle() {
 onMounted(async () => {
   onResize()
   window.addEventListener('resize', onResize)
+  systemTheme.addEventListener('change', onSystemTheme)
   await bootstrap()
   disconnect = connectEvents()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize)
+  systemTheme.removeEventListener('change', onSystemTheme)
   disconnect?.()
 })
 

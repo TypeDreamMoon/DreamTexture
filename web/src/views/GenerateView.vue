@@ -17,19 +17,23 @@ import SelfCheck from '../components/SelfCheck.vue'
 import JobCard from '../components/JobCard.vue'
 import { api } from '../api/client'
 import { workflows, jobs, batchJobs, upsertJob, health } from '../store'
+import { persisted, persistedEnum } from '../persist'
 import type { Param, WorkflowMeta } from '../api/types'
 
 const message = useMessage()
 
-const selectedID = ref<string>('')
-const variants = ref(4)
+// 选中的预设与变体数都记住：回来还得重选一遍是很烦人的。
+// selectedID 存下来的值可能指向一个已经被删掉的工作流，所以下面装载列表时
+// 还要再验一次——这里没法验，那会儿列表还没到。
+const selectedID = persisted<string>('gen.workflow', '')
+const variants = persisted<number>('gen.variants', 4, (v) => [1, 2, 4, 6].includes(v as number))
 const values = ref<Record<string, unknown>>({})
 const submitting = ref(false)
 const currentBatch = ref<string>('')
 
 // 材质 / 图片是两类完全不同的产物，分成两档而不是混在一个预设列表里：
 // 混着的话用户得先认出哪个预设产出什么，而两者的参数、产物、去处都不一样。
-const kind = ref<'material' | 'image'>('material')
+const kind = persistedEnum<'material' | 'image'>('gen.kind', 'material', ['material', 'image'])
 const KINDS = [
   { label: '材质', value: 'material' as const },
   { label: '图片', value: 'image' as const },
@@ -82,12 +86,20 @@ function renderWorkflow(opt: SelectOption) {
   ])
 }
 
-// 工作流列表到位后默认选第一个；换工作流要按新的声明重置参数。
+// 工作流列表到位后决定选谁。优先级从高到低：
+//
+//   1. 详情页点「再来一张」指定的那个——那是用户刚做出的明确动作
+//   2. 上次离开时选的那个，**且它还在列表里**
+//   3. 上次那个档里的第一个
+//   4. 列表里的第一个
+//
+// 第 2 条必须验在不在：工作流会被删被改名，存下来的 id 指向一个不存在的东西时
+// 下拉框会显示空白且怎么点都不对，还不给任何报错。
 watch(
   workflows,
   (list) => {
-    if (selectedID.value || !list.length) return
-    // 回填指定的工作流优先，否则用第一个。
+    if (!list.length) return
+
     let want = ''
     try {
       const raw = sessionStorage.getItem('dt.refill')
@@ -95,9 +107,14 @@ watch(
     } catch {
       want = ''
     }
-    const wf = list.find((w) => w.id === want) ?? list[0]!
+
+    const wf =
+      list.find((w) => w.id === want) ??
+      list.find((w) => w.id === selectedID.value) ??
+      list.find((w) => w.kind === kind.value) ??
+      list[0]!
     selectedID.value = wf.id
-    // 回填来自图片详情时要连档一起切过去，否则选中的预设不在当前档里，
+    // 档要跟着选中的走，否则选中的预设不在当前档里，
     // 下拉框会显示一个列表里根本没有的值。
     kind.value = wf.kind === 'image' ? 'image' : 'material'
   },

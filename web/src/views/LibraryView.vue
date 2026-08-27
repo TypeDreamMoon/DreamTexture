@@ -4,11 +4,12 @@ import { RouterLink } from 'vue-router'
 import { NInput, NSelect, NSpin, NSwitch } from 'naive-ui'
 import PageHeader from '../components/PageHeader.vue'
 import { api, fileURL } from '../api/client'
+import { persisted, persistedEnum } from '../persist'
 import type { MaterialIndex, Picture } from '../api/types'
 
 // 材质与图片分档看：两者的卡片信息完全不同（材质关心风格与分辨率，
 // 图片关心尺寸与花费），混在一个网格里只会互相干扰。
-const kind = ref<'material' | 'picture'>('material')
+const kind = persistedEnum<'material' | 'picture'>('lib.kind', 'material', ['material', 'picture'])
 const KINDS = [
   { label: '材质', value: 'material' as const },
   { label: '图片', value: 'picture' as const },
@@ -17,9 +18,9 @@ const KINDS = [
 const items = ref<MaterialIndex[]>([])
 const pics = ref<Picture[]>([])
 const loading = ref(true)
-const query = ref('')
-const style = ref<string | null>(null)
-const favOnly = ref(false)
+const query = persisted<string>('lib.query', '')
+const style = persisted<string | null>('lib.style', null)
+const favOnly = persisted<boolean>('lib.fav', false)
 
 const STYLES = [
   { label: '全部风格', value: '' },

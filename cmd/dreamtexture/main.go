@@ -100,12 +100,19 @@ func run() error {
 	// 拒绝启动，那个"帮你把 ComfyUI 装起来"的页面就永远打不开，最需要它的人
 	// 反而用不上。任务侧本来就会排队等它回来（waitComfyAvailable），
 	// 健康探针和环境自检也都会如实报告，所以降级运行是安全的。
-	if err := sup.Start(ctx); err != nil {
-		log.Warn("ComfyUI 暂时不可用，后端仍会启动；去设置页部署或修正路径", "原因", err)
-	} else {
+	//
+	// 放进协程还有第二个理由：ComfyUI 不一定是"起来"或"起不来"两种结局，
+	// 它还可能**很慢**——自定义节点首次启动会现装依赖（实测 Impact-Pack 要从
+	// GitHub 拉 sam2），进程一直活着，于是 waitReady 一直等下去。同步等的话
+	// 这段时间里整个界面都打不开，而控制台页恰恰是唯一能看见它在干什么的地方。
+	go func() {
+		if err := sup.Start(ctx); err != nil {
+			log.Warn("ComfyUI 暂时不可用，后端仍会启动；去设置页部署或修正路径", "原因", err)
+			return
+		}
 		h := sup.Health()
 		log.Info("ComfyUI 就绪", "版本", h.Version, "设备", h.Device, "显存MB", h.VRAMTotalMB)
-	}
+	}()
 
 	bus := job.NewBus()
 

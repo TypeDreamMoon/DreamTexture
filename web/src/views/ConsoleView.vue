@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NButton, NSelect, NInput, NTag, useDialog, useMessage } from 'naive-ui'
 import { api } from '../api/client'
+import { persisted } from '../persist'
 import { health } from '../store'
 import type { LogLine } from '../api/types'
 
@@ -10,8 +11,8 @@ const dialog = useDialog()
 
 const lines = ref<LogLine[]>([])
 const last = ref(0)
-const source = ref<string>('')
-const filter = ref('')
+const source = persisted<string>('console.source', '')
+const filter = persisted<string>('console.filter', '')
 const busy = ref('')
 const paused = ref(false)
 const box = ref<HTMLElement | null>(null)

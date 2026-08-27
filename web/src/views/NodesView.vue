@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NButton, NInput, NSelect, NTag, NAlert, NSpin, useMessage, useDialog } from 'naive-ui'
 import PageHeader from '../components/PageHeader.vue'
 import { api } from '../api/client'
+import { persisted } from '../persist'
 import { health } from '../store'
 import type { ManagerCapability, NodePack, NodeQueue } from '../api/types'
 
@@ -13,7 +14,7 @@ const cap = ref<ManagerCapability | null>(null)
 const packs = ref<NodePack[]>([])
 const total = ref(0)
 const loading = ref(true)
-const query = ref('')
+const query = persisted<string>('nodes.query', '')
 const state = ref<string>('')
 const busy = ref('')
 const queue = ref<NodeQueue | null>(null)

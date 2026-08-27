@@ -5,6 +5,7 @@ import { NButton, NSpin, NTag, useMessage } from 'naive-ui'
 import TileViewer from '../components/TileViewer.vue'
 import MaterialPreview3D from '../components/MaterialPreview3D.vue'
 import { api, fileURL } from '../api/client'
+import { persistedEnum } from '../persist'
 import { CHANNEL_LABEL, CHANNEL_ORDER } from '../api/types'
 import type { Manifest, MaterialIndex } from '../api/types'
 
@@ -19,7 +20,7 @@ const error = ref('')
 const channel = ref('basecolor')
 
 // 默认进 3D：单看通道图判断不出材质好坏，打上光才看得出来。
-const mode = ref<'3d' | 'channels'>('3d')
+const mode = persistedEnum<'3d' | 'channels'>('material.mode', '3d', ['3d', 'channels'])
 const MODES = [
   { key: '3d' as const, label: '材质预览' },
   { key: 'channels' as const, label: '通道检视' },

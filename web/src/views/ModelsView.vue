@@ -5,6 +5,7 @@ import { RouterLink } from 'vue-router'
 import ModelBrowser from '../components/ModelBrowser.vue'
 import PageHeader from '../components/PageHeader.vue'
 import { api } from '../api/client'
+import { persistedEnum } from '../persist'
 import { downloads, upsertDownload } from '../store'
 import type { Inventory, ModelRequirement } from '../api/types'
 
@@ -15,7 +16,7 @@ const scanning = ref(false)
 const error = ref('')
 
 // 「本机」看已有的和工作流缺什么，「浏览」去库里找新的。
-const mode = ref<'local' | 'browse'>('local')
+const mode = persistedEnum<'local' | 'browse'>('models.mode', 'local', ['local', 'browse'])
 const MODES = [
   { key: 'local' as const, label: '本机' },
   { key: 'browse' as const, label: '浏览下载' },
