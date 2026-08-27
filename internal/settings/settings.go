@@ -79,7 +79,12 @@ var restartKeys = map[string]string{
 }
 
 // Apply 校验并写入改动，返回需要重启才生效的项。
+//
+// 返回空切片而不是 nil：这个值要直接进 JSON，而 Go 的 nil 切片序列化成 null，
+// 前端一句 `r.need_restart.length` 就炸。表现特别误导人——配置其实已经写进去了，
+// 用户看到的却是一个红色报错。凡是"一个列表"的字段都别让它变成 null。
 func (s *Store) Apply(p Patch) (needRestart []string, err error) {
+	needRestart = []string{}
 	s.mu.Lock()
 	next := s.cfg
 	touched := map[string]bool{}

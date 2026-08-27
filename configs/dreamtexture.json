@@ -1,22 +1,27 @@
 {
   "addr": "127.0.0.1:8777",
-  "output_dir": "output",
-  "data_dir": "data",
-  "workflows_dir": "workflows",
   "comfy": {
-    "mode": "managed",
-    "base_url": "http://127.0.0.1:8188",
-    "python": "I:\\ComfyUI\\ComfyUI-aki-v3\\python\\python.exe",
-    "main_py": "I:\\ComfyUI\\ComfyUI-aki-v3\\ComfyUI\\main.py",
-    "extra_args": ["--preview-method", "none"],
-    "start_timeout": "3m",
-    "health_interval": "10s",
     "auto_restart": true,
-    "max_queue_depth": 8
+    "base_url": "http://127.0.0.1:8188",
+    "extra_args": [
+      "--preview-method",
+      "none"
+    ],
+    "health_interval": "10s",
+    "main_py": "I:\\ComfyUI\\ComfyUI-aki-v3\\ComfyUI\\main.py",
+    "max_queue_depth": 8,
+    "mode": "managed",
+    "python": "I:\\ComfyUI\\ComfyUI-aki-v3\\python\\python.exe",
+    "reserve_vram_gb": 1,
+    "start_timeout": "3m"
   },
+  "data_dir": "data",
   "imagen": {
-    "proxy": "",
+    "flatten": 1,
     "openai_base_url": "",
-    "flatten": 1
-  }
+    "proxy": "",
+    "refine_model": "gpt-5.6-luna"
+  },
+  "output_dir": "output",
+  "workflows_dir": "workflows"
 }

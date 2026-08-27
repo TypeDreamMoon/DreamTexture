@@ -118,7 +118,9 @@ async function save(patch: ConfigPatch, what: string) {
   try {
     const r = await api.updateConfig(patch)
     await refresh()
-    if (r.need_restart.length) {
+    // 加问号是第二道防线：后端已经保证不返回 null 了，但"保存成功却弹红字"
+    // 这种错误的代价太不成比例——真出问题时宁可少提示一句，也不要谎报失败。
+    if (r.need_restart?.length) {
       message.warning(`已保存。${r.need_restart.join('、')} 需要重启后端才生效`)
     } else {
       message.success('已保存')
