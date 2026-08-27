@@ -14,6 +14,21 @@ import (
 	"github.com/mengye/dreamtexture/internal/workflow"
 )
 
+// hasGraph 挡住"对没有节点图的模板做图上的事"。
+//
+// 直出的工作流整条链路不经过 ComfyUI，模板里根本没有图。不在入口挡一道的话，
+// 报出来的是 "unexpected end of JSON input"——那是在说 JSON 坏了，
+// 而真相是这个工作流本来就不该走到这儿。
+func hasGraph(tpl *workflow.Template) error {
+	if tpl.Meta.Direct() {
+		return fmt.Errorf("%s 是纯云端直出，本机没有节点图可编辑或下载", tpl.Meta.ID)
+	}
+	if len(tpl.RawTemplate()) == 0 {
+		return fmt.Errorf("%s 没有可用的节点图", tpl.Meta.ID)
+	}
+	return nil
+}
+
 // nodeSpecs 取回并解析 ComfyUI 的节点定义，供图格式转换使用。
 func (s *Server) nodeSpecs(r *http.Request) (map[string]workflow.NodeSpec, error) {
 	raw, err := s.Sup.Client().ObjectInfo(r.Context())
@@ -39,6 +54,10 @@ func (s *Server) openInComfy(w http.ResponseWriter, r *http.Request) {
 	tpl, ok := s.Reg.Get(id)
 	if !ok {
 		writeErr(w, http.StatusNotFound, "工作流不存在")
+		return
+	}
+	if err := hasGraph(tpl); err != nil {
+		writeErr(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	specs, err := s.nodeSpecs(r)
@@ -74,6 +93,11 @@ func (s *Server) templateJSON(w http.ResponseWriter, r *http.Request) {
 	tpl, ok := s.Reg.Get(chi.URLParam(r, "id"))
 	if !ok {
 		writeErr(w, http.StatusNotFound, "工作流不存在")
+		return
+	}
+	// 不挡的话直出模板会下载到一个 0 字节的 json——比报错更难查。
+	if err := hasGraph(tpl); err != nil {
+		writeErr(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")

@@ -4,6 +4,7 @@ import { NButton, NInput, NSelect, NModal, NCheckbox, NTag, NAlert, useMessage }
 import PageHeader from '../components/PageHeader.vue'
 import { api } from '../api/client'
 import { workflows, health } from '../store'
+import type { WorkflowMeta } from '../api/types'
 
 const message = useMessage()
 const busy = ref('')
@@ -11,6 +12,9 @@ const reloading = ref(false)
 const lastExport = ref<{ id: string; file: string } | null>(null)
 
 const comfyURL = computed(() => health.value?.base_url ?? 'http://127.0.0.1:8188')
+
+/** 纯云端直出的工作流没有节点图，编辑与下载模板都无从谈起。 */
+const direct = (w: WorkflowMeta) => !!w.source?.direct_output
 
 async function refresh() {
   reloading.value = true
@@ -130,15 +134,25 @@ async function doImport() {
         <dl class="facts">
           <dt>可调参数</dt>
           <dd>{{ w.params.length }} 基础 · {{ w.advanced.length }} 高级</dd>
-          <dt>输出通道</dt>
-          <dd class="dt-mono">{{ Object.keys(w.outputs).sort().join(' ') }}</dd>
+          <template v-if="!direct(w)">
+            <dt>输出通道</dt>
+            <dd class="dt-mono">{{ Object.keys(w.outputs).sort().join(' ') }}</dd>
+          </template>
           <template v-if="w.node_packs?.length">
             <dt>节点包</dt>
             <dd class="dt-mono">{{ w.node_packs.join(' · ') }}</dd>
           </template>
         </dl>
 
-        <div class="row">
+        <!--
+          直出的工作流没有节点图，"编辑"和"下载模板"都无事可做。
+          与其点了给个 JSON 解析错误，不如根本不给这两个按钮。
+        -->
+        <p v-if="direct(w)" class="nograph dt-faint">
+          纯云端直出，本机没有节点图可编辑——参数直接发给
+          <span class="dt-mono">{{ w.source?.provider }}</span>，产物拿回来就是成品。
+        </p>
+        <div v-else class="row">
           <NButton size="tiny" :loading="busy === w.id" @click="editInComfy(w.id)">
             在 ComfyUI 中编辑
           </NButton>
@@ -277,6 +291,12 @@ a {
 }
 .row a {
   text-decoration: none;
+}
+/* 和 .row 一样的上边距，卡片高度不会因为有没有按钮而跳。 */
+.nograph {
+  margin: 14px 0 0;
+  font-size: var(--dt-fs-sm);
+  line-height: 1.6;
 }
 
 .hint {

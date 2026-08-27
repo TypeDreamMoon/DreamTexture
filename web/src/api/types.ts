@@ -44,6 +44,8 @@ export interface SourceSpec {
   provider: string
   image_param: string
   roles: Record<string, string>
+  /** true = 云端拿回来的就是成品，整条链路不经过 ComfyUI，也就没有节点图。 */
+  direct_output?: boolean
 }
 
 /** material = 一整套 PBR 通道；image = 单张图片。 */
