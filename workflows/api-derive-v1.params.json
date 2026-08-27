@@ -1,0 +1,281 @@
+{
+  "id": "api-derive-v1",
+  "version": 1,
+  "name": "API 底图 · 手绘派生",
+  "style": "stylized",
+  "description": "底图交给云端模型出，再用传统亮度推导得到法线/高度/AO/粗糙度。适合手绘、卡通、风格化材质——这类材质本来就没有物理正确的分解可言，推导反而更可控。",
+  "template": "api-derive-v1.json",
+  "resolution": 1024,
+  "tileable": false,
+  "tileable_when_positive": "tile_fix",
+  "source": {
+    "kind": "api",
+    "provider": "openai",
+    "image_param": "source_image",
+    "roles": {
+      "model": "api_model",
+      "prompt": "prompt",
+      "size": "api_size",
+      "quality": "api_quality",
+      "background": "api_background",
+      "reference": "reference"
+    }
+  },
+  "model_requirements": [
+    {
+      "kind": "checkpoint",
+      "file": "Juggernaut-XL-v9.safetensors",
+      "dir": "checkpoints",
+      "size_bytes": 7105348188,
+      "source": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
+      "download_url": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+      "auth": "none",
+      "note": "只有「无缝重整」大于 0 时才用得到；调成 0 走直出，不下这个模型也能跑"
+    },
+    {
+      "kind": "lora",
+      "file": "HandPainted2D-Seamless-SDXL.safetensors",
+      "dir": "loras",
+      "size_bytes": 228455996,
+      "source": "https://civitai.com/models/483692",
+      "download_url": "https://civitai.com/api/download/models/537948?fileId=454676",
+      "auth": "civitai-login",
+      "note": "只在无缝重整大于 0 且风格强度大于 0 时用到"
+    }
+  ],
+  "node_packs": [
+    "ComfyUI-seamless-tiling",
+    "ComfyUI-TextureAlchemy"
+  ],
+  "params": [
+    {
+      "key": "prompt",
+      "label": "提示词",
+      "type": "string",
+      "multiline": true,
+      "target": "dt.positive.text",
+      "prefix": "2d seamless hand-painted texture, ",
+      "suffix": ", top down view, seamless tileable, flat even lighting, no shadows",
+      "default": "stylized hand painted stone bricks with moss",
+      "note": "前后缀会一并送给云端模型"
+    },
+    {
+      "key": "api_model",
+      "label": "云端模型",
+      "type": "string",
+      "widget": "imagen-model",
+      "default": "",
+      "note": "可用模型按你的 API 令牌实际权限列出"
+    },
+    {
+      "key": "api_quality",
+      "label": "画质档",
+      "type": "enum",
+      "options": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "default": "medium",
+      "note": "直接决定单张花费与耗时"
+    },
+    {
+      "key": "tile_fix",
+      "label": "无缝重整",
+      "type": "float",
+      "min": 0,
+      "max": 0.85,
+      "target": "dt.sampler.denoise",
+      "default": 0.45,
+      "rewire_when_zero": [
+        {
+          "node": "dt.out.basecolor",
+          "input": "images",
+          "source": "dt.source_scale",
+          "slot": 0
+        },
+        {
+          "node": "dt.luminance",
+          "input": "color",
+          "source": "dt.source_scale",
+          "slot": 0
+        }
+      ],
+      "drop_when_zero": [
+        "dt.checkpoint",
+        "dt.style_lora",
+        "dt.seamless_model",
+        "dt.seamless_vae",
+        "dt.positive",
+        "dt.negative",
+        "dt.sampler",
+        "dt.decode",
+        "dt.source_encode"
+      ],
+      "note": "云端出的图不保证无缝。本地 SDXL 用循环卷积重画一道可以让它可平铺，数值越大越无缝、也越偏离原图；0.35~0.55 通常够用。调成 0 则直接分解，不经过本地 SDXL，也就不需要下底模"
+    },
+    {
+      "key": "reference",
+      "label": "参考图",
+      "type": "image",
+      "note": "留空为纯文生图。给了参考图就走云端的图像编辑接口，在它基础上改"
+    },
+    {
+      "key": "source_image",
+      "label": "底图",
+      "type": "image",
+      "target": "dt.source_image.image",
+      "hidden": true,
+      "note": "由后端填：云端出的图上传到 ComfyUI 之后的文件名"
+    }
+  ],
+  "advanced": [
+    {
+      "key": "api_size",
+      "label": "云端出图尺寸",
+      "type": "enum",
+      "options": [
+        "1024x1024",
+        "1536x1024",
+        "1024x1536"
+      ],
+      "default": "1024x1024",
+      "note": "纹理基本只用正方形；非正方形会在缩放到工作分辨率时被拉伸"
+    },
+    {
+      "key": "api_background",
+      "label": "背景",
+      "type": "enum",
+      "options": [
+        "opaque",
+        "auto",
+        "transparent"
+      ],
+      "default": "opaque",
+      "note": "transparent 用于贴花类素材；普通纹理保持 opaque"
+    },
+    {
+      "key": "resolution",
+      "label": "工作分辨率",
+      "type": "enum",
+      "options": [
+        768,
+        1024
+      ],
+      "target": [
+        "dt.source_scale.width",
+        "dt.source_scale.height"
+      ],
+      "default": 1024,
+      "note": "云端出的图会先缩放到这个尺寸"
+    },
+    {
+      "key": "negative",
+      "label": "负面词",
+      "type": "string",
+      "multiline": true,
+      "target": "dt.negative.text",
+      "default": "perspective, vignette, cast shadow, specular highlight, blurry, watermark, text, border",
+      "note": "只作用于本地的无缝重整那一道；云端接口不收负面词"
+    },
+    {
+      "key": "seed",
+      "label": "种子",
+      "type": "int",
+      "target": "dt.sampler.seed",
+      "default": -1,
+      "note": "只影响本地重整。云端接口不支持种子，同一提示词每次结果都不同"
+    },
+    {
+      "key": "steps",
+      "label": "步数",
+      "type": "int",
+      "min": 10,
+      "max": 60,
+      "target": "dt.sampler.steps",
+      "default": 30
+    },
+    {
+      "key": "cfg",
+      "label": "CFG",
+      "type": "float",
+      "min": 1,
+      "max": 15,
+      "target": "dt.sampler.cfg",
+      "default": 6
+    },
+    {
+      "key": "sampler",
+      "label": "采样器",
+      "type": "string",
+      "target": "dt.sampler.sampler_name",
+      "default": "dpmpp_2m"
+    },
+    {
+      "key": "scheduler",
+      "label": "调度器",
+      "type": "string",
+      "target": "dt.sampler.scheduler",
+      "default": "karras"
+    },
+    {
+      "key": "normal_strength",
+      "label": "法线强度",
+      "type": "float",
+      "min": 0.1,
+      "max": 4.0,
+      "target": "dt.derive_normal.strength",
+      "default": 2.2
+    },
+    {
+      "key": "ao_radius",
+      "label": "AO 半径",
+      "type": "int",
+      "min": 4,
+      "max": 64,
+      "target": "dt.derive_ao.radius",
+      "default": 44
+    },
+    {
+      "key": "ao_strength",
+      "label": "AO 强度",
+      "type": "float",
+      "min": 0,
+      "max": 3,
+      "target": "dt.derive_ao.strength",
+      "default": 2.6
+    }
+  ],
+  "outputs": {
+    "basecolor": {
+      "node": "dt.out.basecolor",
+      "colorspace": "srgb"
+    },
+    "normal": {
+      "node": "dt.out.normal",
+      "colorspace": "linear",
+      "y_from_param": "normal_format"
+    },
+    "roughness": {
+      "node": "dt.out.roughness",
+      "colorspace": "linear"
+    },
+    "metallic": {
+      "node": "dt.out.metallic",
+      "colorspace": "linear"
+    },
+    "ao": {
+      "node": "dt.out.ao",
+      "colorspace": "linear"
+    },
+    "height": {
+      "node": "dt.out.height",
+      "colorspace": "linear"
+    },
+    "orm": {
+      "node": "dt.out.orm",
+      "colorspace": "linear",
+      "packing": "R=ao,G=roughness,B=metallic"
+    }
+  }
+}

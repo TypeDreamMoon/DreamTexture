@@ -1,0 +1,26 @@
+{
+  "name": "dreamtexture-web",
+  "private": true,
+  "type": "module",
+  "//packageManager": "钉住装依赖时用的那一版。不钉的话 corepack 每次都解析成最新版，新版一发布就会判定依赖过期、要清空 node_modules 重装——而这套依赖是精确固定过的（TypeScript 必须停在 5.9，vue-tsc 还不兼容 TS7），重装很可能换出不兼容的组合。",
+  "packageManager": "pnpm@10.30.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "naive-ui": "^2.45.2",
+    "three": "^0.185.1",
+    "vue": "^3.5.41",
+    "vue-router": "^5.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@types/three": "^0.185.4",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "typescript": "~5.9.3",
+    "vite": "^8.2.2",
+    "vue-tsc": "^3.3.11"
+  }
+}

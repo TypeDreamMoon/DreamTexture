@@ -1,0 +1,201 @@
+# ComfyUI 集成笔记
+
+M0 阶段实跑得出，直接作为 M1（Go 后端 `internal/comfy`、`internal/workflow`、`internal/job`）的实现依据。
+
+## 本机环境
+
+| 项 | 值 |
+|---|---|
+| ComfyUI | `I:\ComfyUI\ComfyUI-aki-v3`（秋叶整合包 v3），内核 **0.9.2** |
+| Python | 嵌入式 3.13.11，torch 2.9.1+cu130 |
+| 启动 | `python.exe -s ComfyUI\main.py --listen 127.0.0.1 --port 8188 --preview-method none` |
+| GPU | RTX 4070 Ti SUPER 16GB / 64GB 内存 |
+| 模型目录 | `G:\Workflow\ComfyUIModels`，经 `ComfyUI\extra_model_paths.yaml`（键 `dreamtexture`）挂载 |
+
+I: 盘余量紧张，所以模型不放整合包内部。后端做环境自检时要同时检查两处路径。
+
+### 节点包
+
+| 包 | 来源 | 许可 |
+|---|---|---|
+| ComfyUI-Chord | `ubisoft/ComfyUI-Chord` | Ubisoft ML，**research-only** |
+| ComfyUI-seamless-tiling | `spinagon/ComfyUI-seamless-tiling` | GPL-3.0 |
+| ComfyUI-TextureAlchemy | `amtarr/ComfyUI-TextureAlchemy` | **Apache 2.0**（已核实 LICENSE） |
+| ComfyUI-DreamTexture | 本仓库 `comfy_nodes/` | 自有 |
+
+自研包用目录联接挂进去，改代码后重启 ComfyUI 即生效：
+
+```bash
+mklink /J "I:\ComfyUI\ComfyUI-aki-v3\ComfyUI\custom_nodes\ComfyUI-DreamTexture" "G:\Workflow\DreamTexture\comfy_nodes"
+```
+
+## 实测耗时（1024×1024，30 步）
+
+| 管线 | 耗时 |
+|---|---|
+| `stylized-derive-v1` | 约 10 秒 |
+| `realistic-chord-v1`（含 CHORD 分解） | 约 18 秒 |
+
+16GB 显存全程富余。参照项目在 12GB 卡上跑更重的链路是 85 秒，我们的余量很足。
+
+## 必须处理的行为坑
+
+### -1. 显存被占着时不要跑重的分解——同一条管线 650 秒 vs 31 秒
+
+16GB 卡上，如果显存已经被上一条管线的模型占着（底模 + LoRA 等），再跑 CHORD 分解
+会慢一个数量级。日志里的特征是 `Unloaded partially: ... MB freed, ... MB remains loaded`，
+显存逼近上限时 Python 循环密集的泊松求解器（400 个子区域）会被显存分配器拖死。
+
+| 场景 | 写实管线耗时 |
+|---|---|
+| 先跑一次手绘（占住显存）再跑写实 | **650 秒** |
+| 同上，但切换前先调 `/free` 卸载模型 | **31 秒** |
+| 进程上的第一个任务（显存本来就干净） | 30~60 秒 |
+
+后端的应对（`internal/job` 的 `freeIfSwitching`）：检测到工作流切换就先调
+`POST /free {unload_models, free_memory}`。同一个工作流连着跑不受影响，只在切换时腾一次，
+代价是重新加载模型的几秒钟。
+
+> 修正记录：这条最早被误判成下面第 0 条的一部分。第一次遇到 878 秒时 ComfyUI-Manager
+> 恰好也在忙，就把两件事算成了一件。后来在 Manager 早已跑完的干净进程上又复现了 650 秒，
+> 才分离出这个独立原因。两条都真实存在，也都要处理。
+
+### 0. 启动期不要派活——同一张图 878 秒 vs 34.7 秒
+
+ComfyUI 能应答 `/system_stats` 之后，自定义节点的启动任务还会在后台跑很久
+（这台机器上是 ComfyUI-Manager 抓取节点 registry，实测持续 **1~5 分钟**，
+且抓取常因网络失败而拖长）。落在这个窗口里的生成任务会慢一个数量级：
+
+| 提交时机 | 同一条写实管线的 ComfyUI 执行耗时 |
+|---|---|
+| ComfyUI 刚应答、Manager 仍在抓取 | **14 分 38 秒** |
+| Manager 启动任务完成后 | **34.75 秒** |
+
+慢的是 Python 侧——大量后台网络与 JSON 解析抢占 GIL，而工作流里恰好有
+Python 循环密集的节点（CHORD 的泊松求解器要跑 400 个子区域）。
+
+**注意 HTTP 探针发现不了这件事**：实测整个窗口内 `/system_stats` 始终是
+3 毫秒左右，aiohttp 的事件循环照常响应。所以"能连上"不等于"能好好干活"，
+按探针延迟判断就绪是行不通的（这条是试出来的，不是推出来的）。
+
+后端的应对（`internal/comfy` 的 `waitSettled`）：managed 模式下 ComfyUI 的日志
+归我们管，就等日志连续 `settle_quiet`（默认 12 秒）没有新输出再放行，上限
+`settle_timeout`。判据只看日志静默，不认任何具体插件，因此不与 Manager 耦合；
+没有额外启动任务的环境日志立刻安静，几乎不产生等待。设为 0 可关闭。
+
+**根治办法：把 ComfyUI-Manager 的 `network_mode` 改成 `private`**（配置文件在
+`ComfyUI/user/__manager/config.ini`，只读文件，没有环境变量或命令行开关）。
+
+实测 2026-08-27：**启动 5~6 分钟 → 42 秒，而节点目录一个没少。**
+
+| | public | private | offline |
+|---|---|---|---|
+| 启动 | 5~6 分钟 | **42 秒** | 最快 |
+| 5 个清单文件 | 每次刷新 | **每次刷新** | 只读缓存，永不更新 |
+| ComfyRegistry（178 页） | 抓 | 跳过 | 跳过 |
+| 节点目录条数 | 7757 | **7760** | 4022（自带快照，2026-01-18） |
+| 精选模型清单 | 562 | **562** | 缓存 |
+| 装/卸/启停节点 | 可用 | 可用 | 可用（源码里没有拦截安装的分支） |
+
+关键在于源码的这段分支（`manager_server.py`）：
+
+```python
+if get_config()['network_mode'] != 'offline':
+    ...拉取 5 个清单文件...              # private 也走这里
+    if get_config()['network_mode'] == 'private':
+        logging.info("private comfyregistry is not yet supported")   # 跳过
+    else:
+        await core.unified_manager.reload('remote', dont_wait=False)  # ← 慢的就是它
+        await core.unified_manager.get_custom_nodes(channel_url, 'remote')
+```
+
+**别选 offline。** 直觉上"最彻底"，实际代价大得多：`manager_core.py` 里 offline
+分支永远读缓存，连界面上点刷新都不会去联网；没有缓存时回退到 Manager 自带的快照
+（本机这份是 2026-01-18 的，只有 4022 个包，不到在线的六成）。
+
+private 之所以几乎无损，是因为 `/customnode/getlist` 读的是刚刷新过的
+`custom-node-list.json` 加本地 DB，而那 178 页的 ComfyRegistry 抓取是给
+`unified_manager` 的另一条路用的——对我们的节点页没有贡献，纯粹是白等。
+
+**已知的漏网情形：`waitSettled` 会落进"暴风雨前的平静"。** 2026-08-27 实测到一次：
+
+```
+17:19:15  ComfyUI 应答（Manager 自行重启后）
+17:19:39  日志最后一次增长
+17:19:51  判定「已安定」（连续 12 秒无输出），放行
+17:20:01  日志出现 FETCH ComfyRegistry Data: 30/178   ← 抓取这时才真正开始
+17:25:24  抓取结束（前后约 6 分钟）
+```
+
+安静窗口出现在 Manager **开始**抓取之前，不是结束之后。任何固定的静默阈值都能被
+一段足够长的前置停顿骗过去，把阈值调大只是把这个洞挪远一点。
+
+试过的替代信号：`/object_info` 要在 Python 侧序列化一千多个节点类，理论上比
+`/system_stats` 更能反映 GIL 争用。实测抓取期 260~400ms、空闲期约 180ms——只有
+两倍出头，噪声里分不干净，做不了可靠的就绪判据。**所以这条目前没有好的通用解**，
+根治办法仍是把 `network_mode` 改成 `offline`；`waitSettled` 是尽力而为的兜底，
+不是保证。
+
+### 0.5 自定义节点可能超前于 ComfyUI 本体
+
+`ComfyUI-TextureAlchemy` 的 `shuffle_custom_colors.py` 用了 `io.Schema(search_aliases=...)`，
+而本机的 ComfyUI 0.9.2 还不认这个参数，于是：
+
+```
+TypeError: Schema.__init__() got an unexpected keyword argument 'search_aliases'
+```
+
+好消息是 ComfyUI 在 `/object_info` 里对每个节点单独 try/except，**只有
+`ShuffleCustomColors` 一个节点没注册进来**，同包的其余 8 个（`AOApproximator`、
+`HeightToNormal`、`ChannelPackerORMA`、`NormalConverter` 等，全被我们用着）照常可用。
+
+值得记一笔是因为下次未必这么走运：节点包会自动跟进上游新 API，而整合包的
+ComfyUI 版本是滞后的。环境自检里的「工作流节点」那一项比对的正是节点类是否真的
+注册成功，就是为了在这种情况下直接把缺的节点名报出来，而不是等跑到一半才崩。
+
+### 1. `status_str: success` 不代表成功
+
+某条输出分支校验失败（典型是缺模型文件）时，ComfyUI **照常执行其余分支**，`/history` 里
+`status_str` 依然是 `success`、`completed` 依然是 `true`，只是 `outputs` 少了几个键。
+
+判定成功必须两步都做：
+
+1. 检查 `POST /prompt` 响应体里的 `node_errors`（校验期错误在这里，不在 history 里）；
+2. 比对模板里期望的 `SaveImage` 节点集合与 `outputs` 的实际键集合，缺失即判失败。
+
+### 2. 节点缓存会让 history 报出已不存在的文件
+
+重复提交内容相同的图时，ComfyUI 命中节点缓存直接返回上次的输出记录——**包括文件名**。
+如果那些文件已被删除或换了目录，`/history` 仍会报出旧路径。后端必须：
+
+- 取回产物前校验文件真实存在；
+- 每个任务用唯一输出前缀（避免不同任务互相覆盖，也让缓存命中不会污染新任务）。
+
+### 3. 上游节点的张量形状不符合 IMAGE 约定
+
+ComfyUI 的 IMAGE 是 `[B, H, W, C]`，但 ComfyUI-Chord 有两处返回 `[B, H, W]`：
+
+- `ChordMaterialEstimation` 只对 `ndim == 4` 的输出做 permute，单通道的 `roughness` / `metalness` 原样漏出；
+- `ChordNormalToHeight` 内部 `[None, None].squeeze(1)` 净得 3 维。
+
+`SaveImage` 恰好能容忍（存成灰度 PNG），所以官方示例工作流没暴露；但一接进按 4 维解包的节点
+（`AOApproximator` 的 `batch, h, w, channels = height.shape`、`ChannelPackerORMA` 的 `image[:, :, :, 0:3]`）就崩。
+
+不改上游文件（升级会丢），用本仓库的 `DT_EnsureImageShape` 在中间过一道。
+接入新的 PBR 估计模型时要重新检查这一点。
+
+## 工作流模板约定
+
+- 模板是 ComfyUI 导出的 **API format** JSON，与参数声明 sidecar `<id>.params.json` 成对存放。
+- 所有需要注入的节点必须有唯一 `_meta.title`，统一 `dt.` 前缀。按 title 定位比按节点 id 抗重排。
+- 输出节点统一命名 `dt.out.<通道名>`，后端据此把产物映射到 manifest 的 `maps`。
+- PBR 估计段独立命名（`dt.pbr_estimate` / `dt.chord_model`），便于将来整段替换掉 research-only 的 CHORD。
+- 参数注入原型见 `scratchpad/run_wf.py`，支持 `--set 标题.输入名=值` 与节点 bypass，Go 侧照此实现。
+
+## 无缝平铺
+
+`SeamlessTile`（改 UNet 卷积为 circular padding）+ `MakeCircularVAE` 两个节点即可，
+实测 3×3 平铺零接缝。**仅对 SDXL 这类 UNet 架构有效**，将来换 DiT 底座（Flux / Z-Image）
+必须改走「offset + inpaint 修补」后处理。
+
+CHORD 内部会 `apply_circular_padding`，分解不破坏无缝，无需额外处理。

@@ -1,0 +1,35 @@
+__pycache__/
+*.pyc
+
+# 运行时产物与本地配置
+/runtime/
+/output/
+/data/
+configs/local.*
+# 访问令牌与自定义接口地址，只存本机
+configs/secrets.json
+configs/secrets.json.bak-*
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# Go
+/bin/
+dreamtexture.exe
+
+# 前端
+/web/node_modules/
+/web/dist/
+# vite 以仓库根为 root 跑过一次留下的缓存，不是产物
+/.vite/
+
+# 工具自己的目录，不属于项目
+/.claude/
+
+# 注意：internal/web/dist 是**要提交**的。
+# 它是 go:embed 的目标，提交之后 clone 下来直接 go build 就能得到可用的
+# 二进制，不必先装 node 与 pnpm。代价是每次改前端都会产生一堆压缩后 JS 的
+# 变更；看历史时可以用
+#   git log --stat -- . ":!internal/web/dist"
+# 把它们滤掉。

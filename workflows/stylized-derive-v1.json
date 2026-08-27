@@ -1,0 +1,190 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": { "ckpt_name": "Juggernaut-XL-v9.safetensors" },
+    "_meta": { "title": "dt.checkpoint" }
+  },
+  "2": {
+    "class_type": "LoraLoader",
+    "inputs": {
+      "model": ["1", 0],
+      "clip": ["1", 1],
+      "lora_name": "HandPainted2D-Seamless-SDXL.safetensors",
+      "strength_model": 0.85,
+      "strength_clip": 0.85
+    },
+    "_meta": { "title": "dt.style_lora" }
+  },
+  "3": {
+    "class_type": "SeamlessTile",
+    "inputs": { "model": ["2", 0], "tiling": "enable", "copy_model": "Modify in place" },
+    "_meta": { "title": "dt.seamless_model" }
+  },
+  "4": {
+    "class_type": "MakeCircularVAE",
+    "inputs": { "vae": ["1", 2], "tiling": "enable", "copy_vae": "Make a copy" },
+    "_meta": { "title": "dt.seamless_vae" }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "2d seamless hand-painted texture, stylized hand painted stone bricks with moss, top down view, seamless tileable, flat even lighting, no shadows",
+      "clip": ["2", 1]
+    },
+    "_meta": { "title": "dt.positive" }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "photo, photorealistic, 3d render, perspective, vignette, cast shadow, specular highlight, blurry, watermark, text",
+      "clip": ["2", 1]
+    },
+    "_meta": { "title": "dt.negative" }
+  },
+  "7": {
+    "class_type": "EmptyLatentImage",
+    "inputs": { "width": 1024, "height": 1024, "batch_size": 1 },
+    "_meta": { "title": "dt.latent" }
+  },
+  "50": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "" },
+    "_meta": { "title": "dt.reference_image" }
+  },
+  "51": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": ["50", 0],
+      "upscale_method": "lanczos",
+      "width": 1024,
+      "height": 1024,
+      "crop": "center"
+    },
+    "_meta": { "title": "dt.reference_scale" }
+  },
+  "52": {
+    "class_type": "VAEEncode",
+    "inputs": { "pixels": ["51", 0], "vae": ["4", 0] },
+    "_meta": { "title": "dt.reference_encode" }
+  },
+  "8": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["3", 0],
+      "positive": ["5", 0],
+      "negative": ["6", 0],
+      "latent_image": ["7", 0],
+      "seed": 1019289458269256,
+      "steps": 30,
+      "cfg": 7,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1
+    },
+    "_meta": { "title": "dt.sampler" }
+  },
+  "9": {
+    "class_type": "VAEDecode",
+    "inputs": { "samples": ["8", 0], "vae": ["4", 0] },
+    "_meta": { "title": "dt.decode" }
+  },
+
+  "30": {
+    "class_type": "ColorToGrayscale",
+    "inputs": { "color": ["9", 0], "method": "luminance" },
+    "_meta": { "title": "dt.luminance" }
+  },
+  "31": {
+    "class_type": "PBRHeightProcessor",
+    "inputs": { "depth_map": ["30", 0], "invert": false, "normalize": true },
+    "_meta": { "title": "dt.height_normalize" }
+  },
+  "32": {
+    "class_type": "HeightAmplifier",
+    "inputs": { "height_map": ["31", 0], "amount": 2.0, "center_point": 0.5, "method": "smooth" },
+    "_meta": { "title": "dt.height_contrast" }
+  },
+  "11": {
+    "class_type": "HeightToNormal",
+    "inputs": {
+      "height": ["32", 0],
+      "strength": 2.2,
+      "method": "scharr",
+      "output_format": "DirectX",
+      "blur_radius": 0.5
+    },
+    "_meta": { "title": "dt.derive_normal" }
+  },
+  "12": {
+    "class_type": "AOApproximator",
+    "inputs": {
+      "radius": 44,
+      "strength": 2.6,
+      "samples": 32,
+      "contrast": 1.6,
+      "use_normal": true,
+      "height": ["32", 0],
+      "normal": ["11", 0]
+    },
+    "_meta": { "title": "dt.derive_ao" }
+  },
+  "33": {
+    "class_type": "LevelsAdjustment",
+    "inputs": {
+      "image": ["30", 0],
+      "input_black": 0.05,
+      "input_white": 0.95,
+      "input_gamma": 1.0,
+      "output_black": 0.9,
+      "output_white": 0.6,
+      "mode": "rgb"
+    },
+    "_meta": { "title": "dt.derive_roughness" }
+  },
+  "13": {
+    "class_type": "EmptyImage",
+    "inputs": { "width": 1024, "height": 1024, "batch_size": 1, "color": 0 },
+    "_meta": { "title": "dt.metallic_const" }
+  },
+  "14": {
+    "class_type": "ChannelPackerORMA",
+    "inputs": { "occlusion": ["12", 0], "roughness": ["33", 0], "metallic": ["13", 0] },
+    "_meta": { "title": "dt.pack_orm" }
+  },
+
+  "20": {
+    "class_type": "SaveImage",
+    "inputs": { "images": ["9", 0], "filename_prefix": "dreamtexture/basecolor" },
+    "_meta": { "title": "dt.out.basecolor" }
+  },
+  "21": {
+    "class_type": "SaveImage",
+    "inputs": { "images": ["11", 0], "filename_prefix": "dreamtexture/normal" },
+    "_meta": { "title": "dt.out.normal" }
+  },
+  "22": {
+    "class_type": "SaveImage",
+    "inputs": { "images": ["33", 0], "filename_prefix": "dreamtexture/roughness" },
+    "_meta": { "title": "dt.out.roughness" }
+  },
+  "23": {
+    "class_type": "SaveImage",
+    "inputs": { "images": ["13", 0], "filename_prefix": "dreamtexture/metallic" },
+    "_meta": { "title": "dt.out.metallic" }
+  },
+  "24": {
+    "class_type": "SaveImage",
+    "inputs": { "images": ["12", 0], "filename_prefix": "dreamtexture/ao" },
+    "_meta": { "title": "dt.out.ao" }
+  },
+  "25": {
+    "class_type": "SaveImage",
+    "inputs": { "images": ["32", 0], "filename_prefix": "dreamtexture/height" },
+    "_meta": { "title": "dt.out.height" }
+  },
+  "26": {
+    "class_type": "SaveImage",
+    "inputs": { "images": ["14", 0], "filename_prefix": "dreamtexture/orm" },
+    "_meta": { "title": "dt.out.orm" }
+  }
+}

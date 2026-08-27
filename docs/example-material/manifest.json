@@ -1,0 +1,94 @@
+{
+  "schema": "dreamtexture/material-manifest",
+  "schema_version": 1,
+  "id": "mat_20260827_777001_ref",
+  "name": "mossy river rocks",
+  "style": "realistic",
+  "workflow": {
+    "id": "realistic-chord-v1",
+    "version": 1
+  },
+  "prompt": "texture of large old broken rocks with moss, top down view, seamless tileable, orthographic, flat even lighting, no shadows",
+  "negative": "perspective, vignette, cast shadow, specular highlight, blurry, watermark, text, border",
+  "seed": 777001,
+  "resolution": 1024,
+  "tileable": true,
+  "reference": null,
+  "maps": {
+    "basecolor": {
+      "file": "basecolor.png",
+      "colorspace": "srgb",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 1810722,
+      "sha256": "663606c8c416e35d"
+    },
+    "normal": {
+      "file": "normal.png",
+      "colorspace": "linear",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 1626826,
+      "sha256": "e81eaccfecaea214",
+      "y": "directx"
+    },
+    "roughness": {
+      "file": "roughness.png",
+      "colorspace": "linear",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 687250,
+      "sha256": "2beea65a3614b0f3"
+    },
+    "metallic": {
+      "file": "metallic.png",
+      "colorspace": "linear",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 87392,
+      "sha256": "d9cc7bc1bb500aa6"
+    },
+    "ao": {
+      "file": "ao.png",
+      "colorspace": "linear",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 443210,
+      "sha256": "120341a728d54518"
+    },
+    "height": {
+      "file": "height.png",
+      "colorspace": "linear",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 337137,
+      "sha256": "5938d76e5850072b"
+    },
+    "orm": {
+      "file": "orm.png",
+      "colorspace": "linear",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 1261602,
+      "sha256": "6594c14f4c110257",
+      "packing": "R=ao,G=roughness,B=metallic"
+    }
+  },
+  "preview": "preview.png",
+  "created_at": "2026-08-27T00:00:00+08:00",
+  "generator": {
+    "comfyui": "0.9.2",
+    "checkpoint": "Juggernaut-XL-v9.safetensors",
+    "pbr_estimator": "chord_v1.safetensors",
+    "node_packs": [
+      "ComfyUI-Chord",
+      "ComfyUI-seamless-tiling",
+      "ComfyUI-TextureAlchemy",
+      "ComfyUI-DreamTexture"
+    ]
+  },
+  "license_flags": {
+    "commercial_use": false,
+    "reason": "CHORD: Ubisoft ML License (research-only)"
+  }
+}

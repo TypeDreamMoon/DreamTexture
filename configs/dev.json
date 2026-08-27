@@ -1,0 +1,14 @@
+{
+  "addr": "127.0.0.1:8777",
+  "output_dir": "output",
+  "data_dir": "data",
+  "workflows_dir": "workflows",
+  "comfy": {
+    "mode": "attach",
+    "base_url": "http://127.0.0.1:8188",
+    "start_timeout": "2m",
+    "health_interval": "10s",
+    "auto_restart": false,
+    "max_queue_depth": 8
+  }
+}

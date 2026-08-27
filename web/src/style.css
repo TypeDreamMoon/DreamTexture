@@ -1,0 +1,254 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--dt-bg);
+  color: var(--dt-ink);
+  font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- 版面 ----------
+
+   所有页面共用一个外壳：定宽、居中、留白随视口伸缩。
+   宽度只有三档（narrow / 默认 mid / wide），按内容形态选，不要再各写各的。
+
+   左右留白用 clamp 而不是定值：13 寸笔记本上 34px 的边距太奢侈，
+   27 寸上 16px 又贴边。 */
+
+.dt-page {
+  --dt-page-w: var(--dt-w-mid);
+  width: 100%;
+  max-width: var(--dt-page-w);
+  margin-inline: auto;
+  padding: clamp(16px, 2vw, 26px) clamp(16px, 2.6vw, 34px);
+}
+.dt-page-narrow {
+  --dt-page-w: var(--dt-w-narrow);
+}
+.dt-page-wide {
+  --dt-page-w: var(--dt-w-wide);
+}
+/* 控制台这类要占满的页面 */
+.dt-page-full {
+  --dt-page-w: none;
+}
+
+/* ---------- 键盘焦点 ----------
+
+   自己写的 a / button（导航项、顶栏那两个幽灵按钮、模式切换、部署面板的
+   折叠头）此前一个可见焦点都没有——用键盘走一遍完全不知道停在哪。
+   Naive UI 的组件自带焦点样式，所以这条只兜自己写的那些。
+
+   用 :focus-visible 而不是 :focus：鼠标点击不该冒出焦点框。
+   用 :where() 把优先级压到 0，组件想覆盖随时能覆盖。 */
+:where(a, button, [tabindex]):focus-visible {
+  outline: 2px solid var(--dt-accent);
+  outline-offset: 2px;
+}
+
+/* ---------- 基础块面 ---------- */
+
+.dt-panel {
+  background: var(--dt-surface);
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-radius-card);
+  /* 一层极浅的投影。纯平的卡片在浅色主题下几乎和背景融在一起，
+     只靠 1px 边框撑着，读起来像线框图而不像面。 */
+  box-shadow: 0 1px 2px var(--dt-shadow);
+}
+
+/* 毛玻璃：只用在浮在内容之上的层（顶栏、吸顶面板）。
+   不支持 backdrop-filter 的环境会退回不透明底色，不至于糊成一片。 */
+.dt-glass {
+  background: var(--dt-surface);
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-radius-card);
+}
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .dt-glass {
+    background: var(--dt-glass);
+    -webkit-backdrop-filter: blur(18px) saturate(1.5);
+    backdrop-filter: blur(18px) saturate(1.5);
+  }
+}
+
+.dt-mono {
+  font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.dt-label {
+  font-size: var(--dt-fs-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dt-ink-faint);
+  font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace;
+}
+
+.dt-muted {
+  color: var(--dt-ink-muted);
+}
+.dt-faint {
+  color: var(--dt-ink-faint);
+}
+
+/* 贴图预览一律衬中性深底：法线、粗糙度这些在浅底上看不清边界。 */
+.dt-swatch {
+  background-color: #232326;
+  background-image:
+    linear-gradient(45deg, #2c2c30 25%, transparent 25%),
+    linear-gradient(-45deg, #2c2c30 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #2c2c30 75%),
+    linear-gradient(-45deg, transparent 75%, #2c2c30 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+/* ---------- 下拉项 ----------
+
+   下拉菜单被 naive-ui teleport 到 body 之外，组件的 scoped 样式（哪怕写
+   :deep）都够不着——scoped 编译成 `[data-v-xxx] .foo`，而 teleport 出去的
+   节点在作用域根之外，没有那个祖先。所以凡是自定义渲染的下拉项，样式必须
+   放在全局表里。选中态那一份留在组件内也能生效，但两处分开写迟早会走样。 */
+
+.dt-opt {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
+}
+.dt-opt-name {
+  font-size: var(--dt-fs-base);
+  white-space: nowrap;
+}
+.dt-opt-note {
+  font-size: var(--dt-fs-xs);
+  color: var(--dt-ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dt-opt-tag {
+  flex: none;
+  font-size: var(--dt-fs-2xs);
+  line-height: 1.7;
+  padding: 0 7px;
+  border-radius: 999px;
+  color: var(--dt-ink-faint);
+  background: var(--dt-surface2);
+  white-space: nowrap;
+}
+/* 需要被一眼看见的那一个：云端底图要花钱 */
+.dt-opt-tag-accent {
+  color: var(--dt-accent);
+  background: var(--dt-accent-soft);
+}
+.dt-opt-tag-warn {
+  color: var(--dt-warn);
+  background: transparent;
+  border: 1px solid var(--dt-warn);
+  line-height: 1.5;
+}
+
+/* ---------- 动画 ---------- */
+
+@keyframes dt-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 生成中的占位块用呼吸感的扫光，比空转的圈更能表达"在算" */
+@keyframes dt-sheen {
+  0% {
+    background-position: -160% 0;
+  }
+  100% {
+    background-position: 260% 0;
+  }
+}
+
+@keyframes dt-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.dt-enter {
+  animation: dt-rise 0.32s cubic-bezier(0.22, 0.8, 0.3, 1) both;
+}
+
+.dt-sheen {
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    color-mix(in srgb, var(--dt-accent) 14%, transparent) 42%,
+    transparent 64%
+  );
+  background-size: 220% 100%;
+  animation: dt-sheen 2.1s ease-in-out infinite;
+}
+
+/* 路由切换：淡入并轻微上浮。只做进入，不做离开——离开动画会让点击后
+   出现一段"什么都没发生"的空窗，反而显得慢。 */
+.page-enter-active {
+  transition:
+    opacity 0.24s ease,
+    transform 0.24s cubic-bezier(0.22, 0.8, 0.3, 1);
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dt-enter,
+  .dt-sheen {
+    animation: none;
+  }
+  .page-enter-active {
+    transition: none;
+  }
+  * {
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- 滚动条 ---------- */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--dt-border-strong);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--dt-ink-faint);
+  background-clip: content-box;
+}

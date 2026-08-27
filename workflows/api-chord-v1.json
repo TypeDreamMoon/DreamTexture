@@ -1,0 +1,386 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "Juggernaut-XL-v9.safetensors"
+    },
+    "_meta": {
+      "title": "dt.checkpoint"
+    }
+  },
+  "3": {
+    "class_type": "SeamlessTile",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "tiling": "enable",
+      "copy_model": "Modify in place"
+    },
+    "_meta": {
+      "title": "dt.seamless_model"
+    }
+  },
+  "4": {
+    "class_type": "MakeCircularVAE",
+    "inputs": {
+      "vae": [
+        "1",
+        2
+      ],
+      "tiling": "enable",
+      "copy_vae": "Make a copy"
+    },
+    "_meta": {
+      "title": "dt.seamless_vae"
+    }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "texture of large old broken rocks with moss, top down view, seamless tileable, orthographic, flat even lighting, no shadows",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "dt.positive"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "perspective, vignette, cast shadow, specular highlight, blurry, watermark, text, border",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "dt.negative"
+    }
+  },
+  "50": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": ""
+    },
+    "_meta": {
+      "title": "dt.source_image"
+    }
+  },
+  "51": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "50",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 1024,
+      "height": 1024,
+      "crop": "center"
+    },
+    "_meta": {
+      "title": "dt.source_scale"
+    }
+  },
+  "52": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "51",
+        0
+      ],
+      "vae": [
+        "4",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "dt.source_encode"
+    }
+  },
+  "8": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "3",
+        0
+      ],
+      "positive": [
+        "5",
+        0
+      ],
+      "negative": [
+        "6",
+        0
+      ],
+      "latent_image": [
+        "52",
+        0
+      ],
+      "seed": 1019289458269256,
+      "steps": 30,
+      "cfg": 7,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1
+    },
+    "_meta": {
+      "title": "dt.sampler"
+    }
+  },
+  "9": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "8",
+        0
+      ],
+      "vae": [
+        "4",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "dt.decode"
+    }
+  },
+  "40": {
+    "class_type": "ChordLoadModel",
+    "inputs": {
+      "ckpt_name": "chord_v1.safetensors"
+    },
+    "_meta": {
+      "title": "dt.chord_model"
+    }
+  },
+  "41": {
+    "class_type": "ChordMaterialEstimation",
+    "inputs": {
+      "chord_model": [
+        "40",
+        0
+      ],
+      "image": [
+        "9",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "dt.pbr_estimate"
+    }
+  },
+  "42": {
+    "class_type": "ChordNormalToHeight",
+    "inputs": {
+      "normal": [
+        "41",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "dt.height_from_normal"
+    }
+  },
+  "46": {
+    "class_type": "NormalConverter",
+    "inputs": {
+      "normal": [
+        "41",
+        1
+      ],
+      "conversion": "OpenGL_to_DirectX"
+    },
+    "_meta": {
+      "title": "dt.normal_to_ue"
+    }
+  },
+  "43": {
+    "class_type": "DT_EnsureImageShape",
+    "inputs": {
+      "image": [
+        "42",
+        0
+      ],
+      "channels": "3"
+    },
+    "_meta": {
+      "title": "dt.height_fixshape"
+    }
+  },
+  "44": {
+    "class_type": "DT_EnsureImageShape",
+    "inputs": {
+      "image": [
+        "41",
+        2
+      ],
+      "channels": "3"
+    },
+    "_meta": {
+      "title": "dt.roughness_fixshape"
+    }
+  },
+  "45": {
+    "class_type": "DT_EnsureImageShape",
+    "inputs": {
+      "image": [
+        "41",
+        3
+      ],
+      "channels": "3"
+    },
+    "_meta": {
+      "title": "dt.metallic_fixshape"
+    }
+  },
+  "12": {
+    "class_type": "AOApproximator",
+    "inputs": {
+      "radius": 36,
+      "strength": 2.2,
+      "samples": 32,
+      "contrast": 1.6,
+      "use_normal": true,
+      "height": [
+        "43",
+        0
+      ],
+      "normal": [
+        "41",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "dt.derive_ao"
+    }
+  },
+  "14": {
+    "class_type": "ChannelPackerORMA",
+    "inputs": {
+      "occlusion": [
+        "12",
+        0
+      ],
+      "roughness": [
+        "44",
+        0
+      ],
+      "metallic": [
+        "45",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "dt.pack_orm"
+    }
+  },
+  "19": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "9",
+        0
+      ],
+      "filename_prefix": "dreamtexture/source"
+    },
+    "_meta": {
+      "title": "dt.out.source"
+    }
+  },
+  "20": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "41",
+        0
+      ],
+      "filename_prefix": "dreamtexture/basecolor"
+    },
+    "_meta": {
+      "title": "dt.out.basecolor"
+    }
+  },
+  "21": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "46",
+        0
+      ],
+      "filename_prefix": "dreamtexture/normal"
+    },
+    "_meta": {
+      "title": "dt.out.normal"
+    }
+  },
+  "22": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "44",
+        0
+      ],
+      "filename_prefix": "dreamtexture/roughness"
+    },
+    "_meta": {
+      "title": "dt.out.roughness"
+    }
+  },
+  "23": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "45",
+        0
+      ],
+      "filename_prefix": "dreamtexture/metallic"
+    },
+    "_meta": {
+      "title": "dt.out.metallic"
+    }
+  },
+  "24": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "12",
+        0
+      ],
+      "filename_prefix": "dreamtexture/ao"
+    },
+    "_meta": {
+      "title": "dt.out.ao"
+    }
+  },
+  "25": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "43",
+        0
+      ],
+      "filename_prefix": "dreamtexture/height"
+    },
+    "_meta": {
+      "title": "dt.out.height"
+    }
+  },
+  "26": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "14",
+        0
+      ],
+      "filename_prefix": "dreamtexture/orm"
+    },
+    "_meta": {
+      "title": "dt.out.orm"
+    }
+  }
+}

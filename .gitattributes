@@ -1,0 +1,17 @@
+# 一律用 LF。
+#
+# Windows 上 Git 默认会在检出时把 LF 换成 CRLF，而 gofmt、prettier、
+# Python 都按 LF 写文件——两边来回改会让 diff 里全是"整个文件都变了"。
+* text=auto eol=lf
+
+# 二进制，别做任何行尾转换，也别在 diff 里展开
+*.png binary
+*.jpg binary
+*.webp binary
+*.safetensors binary
+*.fbx binary
+*.exe binary
+
+# 构建产物：diff 里折叠掉，也不计入语言统计
+internal/web/dist/** linguist-generated=true
+web/pnpm-lock.yaml  linguist-generated=true
