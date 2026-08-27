@@ -86,6 +86,7 @@ func (s *Server) Routes() http.Handler {
 		r.Post("/pictures/{id}/favorite", s.favoritePicture)
 		r.Delete("/pictures/{id}", s.deletePicture)
 
+		r.Get("/prompts/models", s.textModels)
 		r.Post("/prompts/refine", s.refinePrompt)
 
 		r.Get("/refs", s.listRefs)

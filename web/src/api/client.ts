@@ -133,6 +133,11 @@ export const api = {
     request<{ ok: boolean }>(`/api/pictures/${id}`, { method: 'DELETE' }),
 
   // ---- 提示词扩写 ----
+  // 列不出来不算错，所以 error 是可选字段而不是抛异常——网关不提供 /models、
+  // 或者令牌只有调用权限没有列举权限都很常见，这时手输模型名照样能用。
+  textModels: () =>
+    request<{ models: string[]; default: string; error?: string }>('/api/prompts/models'),
+  // ---- 提示词扩写 ----
   // 只返回结果，不替用户改——扩写完让他自己看一眼再决定用不用。
   refinePrompt: (prompt: string, purpose: 'texture' | 'image') =>
     request<Refined>('/api/prompts/refine', {

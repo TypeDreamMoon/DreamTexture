@@ -82,3 +82,39 @@ func (s *Server) refinePrompt(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, out)
 }
+
+// TextLister 是能列出文本模型的来源。单开一个接口而不是塞进 Provider：
+// 出图和扩写可以是两家服务，不是每家都两样都做。
+type TextLister interface {
+	TextModels(ctx context.Context) ([]string, error)
+}
+
+// textModels 给设置页的「提示词扩写模型」下拉框供数。
+//
+// 列不出来不算错——网关可能不提供 /models，令牌也可能只有调用权限没有列举权限。
+// 这时返回空清单加一句原因，界面上照样能手输模型名。
+func (s *Server) textModels(w http.ResponseWriter, r *http.Request) {
+	out := map[string]any{
+		"models":  []string{},
+		"default": imagen.DefaultRefineModel,
+	}
+	p, ok := s.Imagen.Get("openai")
+	if !ok {
+		out["error"] = "openai 来源未注册"
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	lister, ok := p.(TextLister)
+	if !ok {
+		out["error"] = p.Label() + " 不支持列举文本模型"
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	ids, err := lister.TextModels(r.Context())
+	if err != nil {
+		out["error"] = firstLine(err.Error())
+	} else {
+		out["models"] = ids
+	}
+	writeJSON(w, http.StatusOK, out)
+}

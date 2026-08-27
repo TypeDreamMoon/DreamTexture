@@ -1,0 +1,1 @@
+import{X as e,an as t}from"./client-DaoK0eww.js";import{S as n}from"./index-BM-RUfOW.js";function r(){let r=t(n,null);return r===null&&e(`use-dialog`,`No outer <n-dialog-provider /> founded.`),r}export{r as t};

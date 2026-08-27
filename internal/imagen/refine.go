@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -172,4 +173,70 @@ func (o *OpenAI) Refine(ctx context.Context, req RefineRequest) (*Refined, error
 		Usage:   Usage{InputTokens: parsed.Usage.PromptTokens, OutputTokens: parsed.Usage.CompletionTokens},
 		Elapsed: time.Since(start).Milliseconds(),
 	}, nil
+}
+
+// textModelCacheTTL 与图像那边同理：清单变得很慢，但也不能一直不刷。
+const textModelCacheTTL = 10 * time.Minute
+
+// notTextModel 认出**肯定不能做对话补全**的模型。
+//
+// 这里用排除法，与图像模型那边的前缀白名单正好相反，因为两者错认的代价不对称：
+//
+//   - 图像：白名单漏了一个，用户少一个选项；错认一个，点了生成才报错。宁可漏。
+//   - 文本：对话模型的命名太散（gpt-*、o*、chatgpt-*，还有网关自己接的
+//     deepseek/qwen/claude/glm…），白名单必然漏掉一大片，而这里漏掉的后果是
+//     "我的模型在下拉框里找不到"。所以反过来：只把明确不是对话的剔掉。
+//
+// 剔错了也不致命——下拉框允许直接手输，见设置页那一栏。
+var notTextModel = []string{
+	"embedding", "embed-",
+	"tts", "whisper", "audio", "realtime", "transcribe", "speech",
+	"image", "dall-e", "vision-preview",
+	"moderation", "omni-moderation", "guard",
+	"rerank", "search-", "codex-mini-latest",
+	"babbage", "davinci", "ada-", "curie",
+}
+
+func isTextModel(id string) bool {
+	l := strings.ToLower(id)
+	for _, bad := range notTextModel {
+		if strings.Contains(l, bad) {
+			return false
+		}
+	}
+	return true
+}
+
+// TextModels 列出扩写能用的文本模型。
+//
+// 走 textBase / textAuth 而不是出图那套：这两者可以配在不同的网关上，
+// 拿出图网关的清单去填扩写的下拉框，填出来的东西一个都用不了。
+func (o *OpenAI) TextModels(ctx context.Context) ([]string, error) {
+	base := o.textBase()
+
+	o.textMu.Lock()
+	if o.textCacheKey == base && time.Since(o.textCachedAt) < textModelCacheTTL &&
+		len(o.textCache) > 0 {
+		out := append([]string{}, o.textCache...)
+		o.textMu.Unlock()
+		return out, nil
+	}
+	o.textMu.Unlock()
+
+	ids, err := o.listModels(ctx, base, o.textAuth)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if isTextModel(id) {
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
+
+	o.textMu.Lock()
+	o.textCache, o.textCacheKey, o.textCachedAt = append([]string{}, out...), base, time.Now()
+	o.textMu.Unlock()
+	return out, nil
 }

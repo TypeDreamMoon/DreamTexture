@@ -129,6 +129,12 @@ type OpenAI struct {
 	cache    []Model
 	cacheKey string // 缓存对应的 base，换了网关必须重新问
 	cachedAt time.Time
+
+	// 文本模型单独缓存：它可能来自另一个网关，和上面那份不是一回事。
+	textMu       sync.Mutex
+	textCache    []string
+	textCacheKey string
+	textCachedAt time.Time
 }
 
 // NewOpenAI 造一个 OpenAI 来源。fallback 留空用官方地址。
@@ -266,19 +272,42 @@ func (o *OpenAI) Ping(ctx context.Context) (detail string, err error) {
 
 // listRemote 拉 /v1/models 并筛出图像模型的 id。
 func (o *OpenAI) listRemote(ctx context.Context) ([]string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, o.base()+"/models", nil)
+	ids, err := o.listModels(ctx, o.base(), o.auth)
 	if err != nil {
 		return nil, err
 	}
-	if err := o.auth(req); err != nil {
+	var out []string
+	for _, id := range ids {
+		for _, p := range imageModelPrefixes {
+			if strings.HasPrefix(id, p) {
+				out = append(out, id)
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
+// listModels 拉一份 /models 的全量 id。
+//
+// base 与鉴权都由调用方给：出图和扩写可以配在两个不同的网关上
+// （见 model.Providers 里 openai-text 那一条），拉列表自然也得各拉各的。
+func (o *OpenAI) listModels(ctx context.Context, base string,
+	auth func(*http.Request) error) ([]string, error) {
+
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := auth(req); err != nil {
 		return nil, err
 	}
 	resp, err := o.http.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, describeTransportError(base, err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
@@ -293,16 +322,13 @@ func (o *OpenAI) listRemote(ctx context.Context) ([]string, error) {
 			ID string `json:"id"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
+	if err := decodeJSON(resp, body, "模型列表接口", &parsed); err != nil {
 		return nil, err
 	}
-	var ids []string
+	ids := make([]string, 0, len(parsed.Data))
 	for _, d := range parsed.Data {
-		for _, p := range imageModelPrefixes {
-			if strings.HasPrefix(d.ID, p) {
-				ids = append(ids, d.ID)
-				break
-			}
+		if d.ID != "" {
+			ids = append(ids, d.ID)
 		}
 	}
 	return ids, nil

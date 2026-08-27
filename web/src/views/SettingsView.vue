@@ -44,6 +44,33 @@ const comfyBaseURL = ref('')
 const comfyMode = ref<'managed' | 'attach'>('managed')
 const autoRestart = ref(true)
 const refineModel = ref('')
+const textModels = ref<string[]>([])
+const modelsError = ref('')
+const loadingModels = ref(false)
+
+// 下拉里除了服务端列出来的，还要保证当前已保存的那个在场：
+// 它可能是手输的、也可能是网关这次没列出来的，不放进去的话下拉框会显示空白，
+// 让人以为设置丢了。
+const textModelOptions = computed(() => {
+  const ids = [...textModels.value]
+  const cur = refineModel.value.trim()
+  if (cur && !ids.includes(cur)) ids.unshift(cur)
+  return ids.map((id) => ({ label: id, value: id }))
+})
+
+async function loadTextModels() {
+  loadingModels.value = true
+  modelsError.value = ''
+  try {
+    const r = await api.textModels()
+    textModels.value = r.models
+    modelsError.value = r.error ?? ''
+  } catch (e) {
+    modelsError.value = String((e as Error).message)
+  } finally {
+    loadingModels.value = false
+  }
+}
 const reserveVRAM = ref(1)
 
 const providers = computed(() => settings.value?.token_providers ?? [])
@@ -81,6 +108,8 @@ async function load() {
   autoRestart.value = c.comfy.auto_restart
   refineModel.value = c.imagen.refine_model
   reserveVRAM.value = c.comfy.reserve_vram_gb
+  // 不 await：列模型要打一趟外网，卡着整个设置页不值得。
+  void loadTextModels()
 }
 onMounted(load)
 
@@ -132,6 +161,9 @@ async function saveEndpoint(provider: string) {
     if (r.message.includes('不通')) message.warning(r.message)
     else message.success(r.message)
     await loadImagen(true)
+    // 换了网关，之前那份模型清单就不作数了——扩写的地址会回落到出图那个，
+    // 所以两个来源改哪一个都得重列。
+    void loadTextModels()
   } catch (e) {
     message.error(String((e as Error).message))
   } finally {
@@ -299,12 +331,23 @@ function hostOf(u?: string): string {
           stack
         >
           <div class="line">
-            <NInput
+            <!--
+              filterable + tag：清单只是帮忙，不是限制。网关不提供 /models、
+              或者列出来的东西被我们的筛选漏掉了，都得能直接把名字打进去。
+            -->
+            <NSelect
               v-model:value="refineModel"
-              size="small"
+              :options="textModelOptions"
+              :loading="loadingModels"
               :placeholder="cfg.imagen.refine_model_default"
+              size="small"
+              filterable
+              tag
               clearable
             />
+            <NButton size="small" tertiary :loading="loadingModels" @click="loadTextModels">
+              刷新
+            </NButton>
             <NButton
               size="small"
               :loading="busy === 'refine'"
@@ -313,6 +356,9 @@ function hostOf(u?: string): string {
               保存
             </NButton>
           </div>
+          <p v-if="modelsError" class="modelnote dt-faint">
+            列不出可用模型（{{ modelsError }}）。直接把模型名打进去也能用。
+          </p>
         </SettingRow>
 
         <SettingRow
@@ -569,6 +615,11 @@ function hostOf(u?: string): string {
 }
 .pick {
   width: 210px;
+}
+.modelnote {
+  margin: 6px 0 0;
+  font-size: var(--dt-fs-xs);
+  line-height: 1.6;
 }
 .path {
   margin: 0;
