@@ -27,6 +27,38 @@ use tauri::Url;
 /// 后端不再等它（见 cmd/dreamtexture/main.go 里 sup.Start 那段注释）。
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(90);
 
+/// LINK_SHIM 把 `<a target="_blank">` 的点击转成 window.open。
+///
+/// 为什么需要这么绕：WebView2 的 NewWindowRequested **只对 window.open 触发，
+/// 锚点点击根本不进这个事件**。所以光挂 on_new_window 是不够的——实测三路对照：
+/// window.open 命中，带不带 rel="noreferrer" 的锚点点击都不命中。这是 Tauri 的
+/// 已知限制（tauri-apps/tauri#5931、#11825），官方目前给的路子也是注入脚本拦点击。
+///
+/// 转成 window.open 之后就落进 on_new_window，由那儿交给系统浏览器。
+///
+/// 放在外壳里而不是改前端：这样那个 Web 应用不用知道自己被套了壳，
+/// 在普通浏览器里照旧是开新标签页。
+const LINK_SHIM: &str = r#"
+(function () {
+  // 捕获阶段，抢在页面自己的处理之前。
+  document.addEventListener('click', function (e) {
+    // 只认左键、且没按修饰键——中键/Ctrl+点击本来就是"另开一个"的意思，
+    // 交给默认行为反而对。
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var el = e.target;
+    while (el && el !== document) {
+      if (el.tagName === 'A') break;
+      el = el.parentNode;
+    }
+    if (!el || el.tagName !== 'A') return;
+    if (el.target !== '_blank' || !el.href) return;
+    if (el.protocol !== 'http:' && el.protocol !== 'https:') return;
+    e.preventDefault();
+    window.open(el.href, '_blank');
+  }, true);
+})();
+"#;
+
 /// 拉起来的后端。附着到已有实例时是 None——不是我们起的，就不该由我们杀。
 struct Backend(Mutex<Option<CommandChild>>);
 
@@ -105,6 +137,7 @@ fn main() {
 fn build_window(app: &tauri::AppHandle, origin: &str) -> tauri::Result<WebviewWindow> {
     let own = origin.to_string();
     let app_for_new = app.clone();
+    let own_for_new = own.clone();
     let app_for_nav = app.clone();
     let own_for_nav = own.clone();
 
@@ -114,12 +147,20 @@ fn build_window(app: &tauri::AppHandle, origin: &str) -> tauri::Result<WebviewWi
         .min_inner_size(1024.0, 640.0)
         .center()
         .visible(false)
-        // target="_blank" 和 window.open 走这里。
+        .initialization_script(LINK_SHIM)
+        // window.open 走这里（锚点点击由 LINK_SHIM 转成 window.open 之后也走这里）。
         //
-        // 窗口里没有浏览器的标签页，默认行为是什么都不发生——界面上那个
-        // 「打开 ComfyUI」点下去毫无反应。一律交给系统浏览器：ComfyUI 的
-        // 节点编辑器是个完整的应用，本来也不该塞进我们这个窗口里。
+        // 窗口里没有浏览器的标签页，默认行为是什么都不发生。一律交给系统浏览器：
+        // ComfyUI 的节点编辑器是个完整的应用，本来也不该塞进我们这个窗口里。
         .on_new_window(move |url, _features| {
+            // 指向我们自己的页面时不该丢给浏览器——那等于把用户请出了应用。
+            // 单窗口应用里"另开一个"最合理的落点就是当前窗口。
+            if is_ours(&url, &own_for_new) {
+                if let Some(w) = app_for_new.get_webview_window("main") {
+                    let _ = w.navigate(url);
+                }
+                return NewWindowResponse::Deny;
+            }
             open_outside(&app_for_new, url.as_str());
             NewWindowResponse::Deny
         })

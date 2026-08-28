@@ -39,23 +39,43 @@ sidecar 的文件名必须带目标三元组，这是 Tauri 的约定；`binarie
 窗口里没有标签页，`target="_blank"` 和 `window.open` 的默认行为是**什么都不发生**
 ——界面上那个「打开 ComfyUI」点下去毫无反应。
 
-所以主窗口在 Rust 里建（不写在 tauri.conf.json 里），为的就是挂两个钩子：
+**只挂 Rust 侧的钩子不够。** WebView2 的 `NewWindowRequested` 只对 `window.open`
+触发，**锚点点击根本不进这个事件**。实测三路对照：
 
-| 钩子 | 管什么 |
+| 触发方式 | 进 on_new_window 吗 |
 |---|---|
-| `on_new_window` | `target="_blank"` / `window.open` |
+| `window.open` | ✅ |
+| `<a target="_blank" rel="noreferrer">` 点击 | ❌ |
+| `<a target="_blank">` 点击 | ❌ |
+
+这是 Tauri 的已知限制（[#5931](https://github.com/tauri-apps/tauri/issues/5931)、
+[#11825](https://github.com/tauri-apps/tauri/issues/11825)），官方目前给的路子
+也是注入脚本拦点击。所以主窗口在 Rust 里建（配置声明的窗口没地方挂东西），
+装了三样：
+
+| | 管什么 |
+|---|---|
+| `initialization_script`（LINK_SHIM） | 捕获阶段拦 `a[target=_blank]` 的点击，转成 `window.open` |
+| `on_new_window` | `window.open`（含上面转过来的） |
 | `on_navigation` | 同窗口内跳到站外 |
 
-两者都一样：不是我们后端的地址，就交给系统浏览器并拦下。ComfyUI 的节点编辑器
-是个完整的应用，本来也不该塞进我们这个窗口里；Civitai、HuggingFace 那些页面同理。
+判断一律看是不是我们后端的地址：
+
+- **站外** → 交给系统浏览器并拦下。ComfyUI 的节点编辑器是个完整的应用，
+  本来也不该塞进我们这个窗口里；Civitai、HuggingFace 那些页面同理
+- **同域** → 落到当前窗口。丢给浏览器等于把用户请出了应用；单窗口应用里
+  "另开一个"最合理的落点就是当前窗口
 
 只放行 `http(s)`。别的协议（`file:`、自定义协议…）交给系统等于让页面有能力
-拉起本机程序，不值这个风险。
+拉起本机程序，不值这个风险。中键与 Ctrl+点击不拦——那本来就是"另开一个"的意思。
 
-实测方式记一笔，因为不好测：没法在 Tauri 窗口里模拟点击，所以在真实界面上用
-`win.eval` 触发 `window.open` 与 `location.href`，同时起一个本地监听端口收请求。
-结果是两条路径都命中了监听端口，而 `msedgewebview2` 仍然连着 `127.0.0.1:8777`
-——**窗口没有被带走**，正是要的行为。
+垫片放在外壳里而不是改前端，这样那个 Web 应用不用知道自己被套了壳，
+在普通浏览器里照旧是开新标签页。
+
+**怎么测的**记一笔，因为不好测：没法在 Tauri 窗口里模拟点击，所以在真实界面上
+用 `win.eval` 造锚点并 `.click()`，同时起一个本地监听端口收请求。最终结果——
+两种锚点写法都命中监听端口（走了系统浏览器），同域链接点完窗口停在 `#/library`
+（留在应用里），而 `msedgewebview2` 始终连着 `127.0.0.1:8777`。
 
 ## 谁起的谁负责关
 
