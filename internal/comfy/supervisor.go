@@ -36,6 +36,15 @@ type Health struct {
 	QueueDepth    int       `json:"queue_depth"`
 	Restarts      int       `json:"restarts"`
 	LastCheckedAt time.Time `json:"last_checked_at"`
+	// Starting 表示子进程已经拉起来了，但 ComfyUI 还没能应答。
+	//
+	// 单独一个状态是必要的：冷启动动辄几十秒到几分钟（自定义节点首次运行还要
+	// 现装依赖），这段时间里它既不是"就绪"也不是"未连接"。混进"未连接"里
+	// 会让人以为坏了，然后去点重启——而重启只会把这几十秒重来一遍。
+	Starting bool `json:"starting"`
+	// StartingSecs 是已经等了多久（秒），给界面显示用。
+	StartingSecs int `json:"starting_secs,omitempty"`
+
 	// UserStopped 区分"我停的"和"它挂了"。
 	//
 	// 给界面一个正经字段，而不是让它去比对 Reason 里的中文——那样改一下措辞
@@ -71,6 +80,9 @@ type Supervisor struct {
 	// userStopped 表示用户从界面上主动停掉了 ComfyUI。
 	// 自动重启必须尊重这个意图，否则那个停止按钮看起来就是坏的。
 	userStopped bool
+
+	// spawnedAt 是最近一次拉起子进程的时刻，用来算"启动中已等了多久"。
+	spawnedAt time.Time
 
 	// sink 收 ComfyUI 的每一行输出，供界面实时显示；可为 nil。
 	sink Sink
@@ -148,7 +160,30 @@ func (s *Supervisor) Health() Health {
 	defer s.mu.Unlock()
 	h := s.health
 	h.UserStopped = s.userStopped
+	h.Starting = s.startingLocked(h)
+	if h.Starting && !s.spawnedAt.IsZero() {
+		h.StartingSecs = int(time.Since(s.spawnedAt).Seconds())
+	}
 	return h
+}
+
+// startingLocked 判断"拉起来了但还没应答"。调用方必须持有 mu。
+//
+// 不存成字段而是现算：存字段就要在每条状态迁移上都记得改它，
+// 漏一条就会卡在"启动中"下不来。
+func (s *Supervisor) startingLocked(h Health) bool {
+	if h.Alive || s.userStopped || s.cfg.Mode != config.ModeManaged {
+		return false
+	}
+	if s.procExited == nil {
+		return false
+	}
+	select {
+	case <-s.procExited:
+		return false // 进程已经退了，那不是启动中，是挂了
+	default:
+		return true
+	}
 }
 
 // Start 让 ComfyUI 可用，并阻塞到首次就绪（或超时）。
@@ -377,6 +412,7 @@ func (s *Supervisor) spawn(ctx context.Context) error {
 	s.mu.Lock()
 	s.cmd, s.group, s.logPath, s.procExited = cmd, group, logPath, exited
 	s.health.PID = cmd.Process.Pid
+	s.spawnedAt = time.Now()
 	s.mu.Unlock()
 
 	// 单独收割子进程，这样 watch 能凭"进程是否退出"判断该不该重启，

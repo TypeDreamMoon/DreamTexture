@@ -191,6 +191,10 @@ export interface ComfyHealth {
   vram_free_mb?: number
   queue_depth: number
   restarts: number
+  /** 子进程起来了但 ComfyUI 还没应答。冷启动几十秒到几分钟，不是"未连接"。 */
+  starting: boolean
+  /** 已经等了多久（秒）。 */
+  starting_secs?: number
   last_checked_at: string
   /** true = 用户主动停的，不是它自己挂了。别拿 reason 里的中文去判断。 */
   user_stopped: boolean

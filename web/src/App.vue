@@ -61,6 +61,7 @@ onMounted(async () => {
   disconnect = connectEvents()
 })
 onBeforeUnmount(() => {
+  clearInterval(ticker)
   window.removeEventListener('resize', onResize)
   systemTheme.removeEventListener('change', onSystemTheme)
   disconnect?.()
@@ -93,12 +94,72 @@ function badgeOf(to: string): number {
   return 0
 }
 
-// 状态点只有三种含义：能干活、连得上但没准备好、连不上。
+// 状态点的几种含义。
+//
+// "启动中"必须和"未连接"分开：冷启动动辄几十秒到几分钟（自定义节点首次运行
+// 还要现装依赖），混在一起会让人以为坏了，然后去点重启——而重启只会把这几十秒
+// 重来一遍。所以这一档还带上已等待的秒数，让人看得出它在动。
+// 服务端每 5 秒推一次状态，直接显示 starting_secs 会一跳 5 秒——看着更像卡住了。
+// 本地补一个秒表，每次推送到达时用服务端的值校准。
+const tick = ref(0)
+let ticker: ReturnType<typeof setInterval> | undefined
+const seenSecs = ref(0)
+const seenAt = ref(0)
+
+watch(
+  () => health.value?.starting,
+  (on) => {
+    clearInterval(ticker)
+    ticker = undefined
+    if (on) ticker = setInterval(() => tick.value++, 1000)
+  },
+  { immediate: true },
+)
+watch(health, (h) => {
+  if (h?.starting) {
+    seenSecs.value = h.starting_secs ?? 0
+    seenAt.value = Date.now()
+  }
+})
+
+const startingSecs = computed(() => {
+  void tick.value // 让它跟着秒表重算
+  if (!health.value?.starting) return 0
+  return seenSecs.value + Math.floor((Date.now() - seenAt.value) / 1000)
+})
+
 const statusTone = computed(() => {
   const h = health.value
-  if (!h || !h.alive) return { color: 'var(--dt-danger)', text: 'ComfyUI 未连接' }
-  if (!h.ready) return { color: 'var(--dt-warn)', text: 'ComfyUI 忙' }
-  return { color: 'var(--dt-ok)', text: 'ComfyUI 就绪' }
+  if (!h) return { color: 'var(--dt-danger)', text: 'ComfyUI 未连接', pulse: false }
+  if (h.user_stopped) return { color: 'var(--dt-ink-faint)', text: 'ComfyUI 已停止', pulse: false }
+  if (h.starting) {
+    const s = startingSecs.value
+    const t = s >= 60 ? `${Math.floor(s / 60)}分${String(s % 60).padStart(2, '0')}秒` : `${s} 秒`
+    return { color: 'var(--dt-warn)', text: `ComfyUI 启动中 ${t}`, pulse: true }
+  }
+  if (!h.alive) return { color: 'var(--dt-danger)', text: 'ComfyUI 未连接', pulse: false }
+  if (!h.ready) return { color: 'var(--dt-warn)', text: 'ComfyUI 忙', pulse: false }
+  return { color: 'var(--dt-ok)', text: 'ComfyUI 就绪', pulse: false }
+})
+
+// 显存单独占一行。它是这个工具里最常需要瞟一眼的数字——显存被别的程序占掉
+// 正是任务卡住不动的头号原因（见 docs/comfyui-notes.md），藏在 tooltip 里
+// 等于没有。读不到就整行不显示，不占位置也不写"未知"。
+const vram = computed(() => {
+  const h = health.value
+  if (!h?.alive || !h.vram_total_mb) return null
+  const total = h.vram_total_mb
+  const free = h.vram_free_mb ?? 0
+  const used = Math.max(0, total - free)
+  const ratio = used / total
+  return {
+    text: `${(free / 1024).toFixed(1)} / ${(total / 1024).toFixed(1)} GB`,
+    pct: Math.round(ratio * 100),
+    // 空闲低于 3 GB 时变色：SDXL 出图那一下要的就是这个量级，
+    // 再少就该触发换出或驱动回退了。
+    color:
+      free < 1536 ? 'var(--dt-danger)' : free < 3072 ? 'var(--dt-warn)' : 'var(--dt-accent)',
+  }
 })
 
 const statusDetail = computed(() => {
@@ -178,11 +239,25 @@ const statusDetail = computed(() => {
               <NTooltip placement="right" :delay="200">
                 <template #trigger>
                   <RouterLink to="/console" class="status">
-                    <i class="dot" :style="{ background: statusTone.color }" />
+                    <i
+                      class="dot"
+                      :class="{ pulse: statusTone.pulse }"
+                      :style="{ background: statusTone.color }"
+                    />
                     <span class="stext dt-faint">{{ statusTone.text }}</span>
                   </RouterLink>
                 </template>
                 {{ collapsed ? statusTone.text : '' }}{{ statusDetail ? (collapsed ? ' · ' : '') + statusDetail : '' }}
+              </NTooltip>
+
+              <NTooltip v-if="vram" placement="right" :delay="200">
+                <template #trigger>
+                  <div class="vram">
+                    <i class="vbar" :style="{ '--pct': vram.pct + '%', '--c': vram.color }" />
+                    <span class="vtext dt-faint dt-mono">{{ vram.text }}</span>
+                  </div>
+                </template>
+                显存空闲 {{ vram.text }}（已用 {{ vram.pct }}%）
               </NTooltip>
 
               <p v-if="!wsConnected && !collapsed" class="offline dt-faint">事件流断开</p>
@@ -408,6 +483,60 @@ const statusDetail = computed(() => {
 }
 .stext {
   font-size: var(--dt-fs-sm);
+  overflow: hidden;
+}
+/* 启动中让点呼吸一下——静止的黄点和"卡住的黄点"看起来一模一样。
+ *
+ * 名字不能叫 dt-pulse：全局已经有一个（style.css），而上面的 .badge 正用着它。
+ * 在 scoped 块里重名定义会被 Vue 连同同文件的引用一起重写，于是角标会悄悄
+ * 改用这套缩放动画——样式没报错，只是角标突然开始一跳一跳。 */
+.dot.pulse {
+  animation: dt-dot-pulse 1.4s ease-in-out infinite;
+}
+@keyframes dt-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dot.pulse {
+    animation: none;
+  }
+}
+
+.vram {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  /* 内边距与 gap 都照抄 .status：这两行上下相邻，竖条要和状态点落在同一列，
+     文字也要和状态文字对齐，差几个像素一眼就看得出来。 */
+  padding: 0 9px;
+  gap: 11px;
+}
+/* 竖条画在状态点那一列上：收起时它就是唯一的显存指示。 */
+.vbar {
+  flex: none;
+  width: 8px;
+  height: 12px;
+  margin: 0 7px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to top,
+    var(--c) var(--pct),
+    var(--dt-border-strong) var(--pct)
+  );
+  transition:
+    background 0.4s ease;
+}
+.vtext {
+  font-size: var(--dt-fs-2xs);
+  white-space: nowrap;
   overflow: hidden;
 }
 .offline {
