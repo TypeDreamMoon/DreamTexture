@@ -39,7 +39,10 @@ jobs:
           cache: pnpm
 
       # 版本号从 tag 来，手动跑时保持仓库里写的那个。
-      # 三处要一致：Tauri 的包信息、安装包文件名、以及界面上报的后端版本。
+      # 四处要一致：Tauri 的包信息、Rust crate、安装包文件名、界面上报的后端版本。
+      #
+      # 仓库里那几个值正常随发布提交一起 bump，这里再刷一遍是为了兜住"忘了 bump
+      # 就打了 tag"——那种情况下装出来的包版本号是错的，而且从产物上看不出来。
       - name: 定版本号
         id: ver
         shell: bash
@@ -56,7 +59,11 @@ jobs:
             c.version='$V';
             fs.writeFileSync(p, JSON.stringify(c,null,2)+'\n');
           "
+          # Cargo.toml 只改 [package] 段，别碰依赖那些 version 约束。
+          sed -i '/^\[package\]/,/^\[[^p]/ s/^version = ".*"/version = "'"$V"'"/' src-tauri/Cargo.toml
+          sed -i '/^name = "dreamtexture-shell"$/{n;s/^version = ".*"/version = "'"$V"'"/;}' src-tauri/Cargo.lock
           echo "版本 $V"
+          grep -m1 '^version' src-tauri/Cargo.toml
 
       # 前端产物虽然已经提交进仓库（internal/web/dist，go:embed 的目标），
       # 这里仍然重建一次：提交的那份可能和源码漂了，而漂了是不会有人发现的。
