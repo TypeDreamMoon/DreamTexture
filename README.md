@@ -42,6 +42,18 @@ go build -o dreamtexture.exe ./cmd/dreamtexture
 cd web && pnpm install && pnpm build
 ```
 
+### 桌面版
+
+`src-tauri/` 是一层 Tauri 外壳，把界面装进原生窗口，不用开浏览器。需要 Rust
+与 pnpm，产物是一个约 13 MB 的安装包。详见 [desktop-shell.md](docs/desktop-shell.md)：
+
+```bash
+go build -o "src-tauri/binaries/dreamtexture-$(rustc -vV | sed -n 's/^host: //p').exe" ./cmd/dreamtexture && pnpm install && pnpm tauri build
+```
+
+外壳只负责拉起后端、等它监听、把窗口导航过去；界面仍由后端提供。
+端口上已经有一个后端在跑时它会直接附着，且关窗口不会杀掉不是它起的进程。
+
 ## 配置
 
 `configs/dreamtexture.json` 是运行配置，设置页的改动写回它。
@@ -66,6 +78,7 @@ cd web && pnpm install && pnpm build
 | [models.md](docs/models.md) · [nodes-and-catalog.md](docs/nodes-and-catalog.md) | 模型与节点包管理 |
 | [workflow-editing.md](docs/workflow-editing.md) | 工作流模板的往返编辑 |
 | [reference-image.md](docs/reference-image.md) | 参考图 / img2img |
+| [desktop-shell.md](docs/desktop-shell.md) | Tauri 外壳、进程生命周期、相对路径的解析基准 |
 
 ## 许可
 

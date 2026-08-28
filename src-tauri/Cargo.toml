@@ -1,0 +1,22 @@
+[package]
+name = "dreamtexture-shell"
+version = "0.1.0"
+description = "DreamTexture 的桌面外壳"
+edition = "2021"
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde_json = "1"
+
+[profile.release]
+# 外壳里没什么热路径，一切向体积看齐。
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

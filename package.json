@@ -1,0 +1,14 @@
+{
+  "name": "dreamtexture-shell",
+  "private": true,
+  "description": "Tauri 外壳。前端在 web/，后端在 cmd/dreamtexture——这里只有打包窗口用的 CLI。",
+  "packageManager": "pnpm@10.30.0",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.5"
+  }
+}

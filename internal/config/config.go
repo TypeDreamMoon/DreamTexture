@@ -155,14 +155,14 @@ func Load(path string) (Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return cfg, cfg.finalize()
+			return cfg, cfg.finalize(path)
 		}
 		return cfg, err
 	}
 	if err := json.Unmarshal(b, &cfg); err != nil {
 		return cfg, fmt.Errorf("解析配置 %s: %w", path, err)
 	}
-	return cfg, cfg.finalize()
+	return cfg, cfg.finalize(path)
 }
 
 // Validate 只做校验，不改动任何字段。
@@ -185,12 +185,27 @@ func (c Config) Validate() error {
 	return nil
 }
 
-func (c *Config) finalize() error {
-	// 相对路径按配置文件所在目录的上一级（也就是程序根目录）解析，
-	// 这样整个 DreamTexture 目录搬到别的盘也照样能跑。
+// finalize 把相对路径补成绝对路径。
+//
+// 基准是**配置文件所在目录的上一级**（也就是程序根目录），不是当前工作目录。
+// 这样整个 DreamTexture 目录搬到别的盘照样能跑，双击启动、被外壳拉起来、
+// 从服务里启动也都一样——这几种情形的 cwd 各不相同，按 cwd 解析的话
+// output/ 和 data/ 会落到谁也想不到的地方，而且不报错。
+//
+// 从仓库根跑 `-config configs/dreamtexture.json` 的老用法结果不变：
+// configs 的上一级正是仓库根。
+func (c *Config) finalize(cfgPath string) error {
+	base := ""
+	if abs, err := filepath.Abs(cfgPath); err == nil {
+		base = filepath.Dir(filepath.Dir(abs))
+	}
 	for _, p := range []*string{&c.OutputDir, &c.DataDir, &c.WorkflowsDir,
 		&c.Comfy.Python, &c.Comfy.MainPy} {
-		if *p == "" {
+		if *p == "" || filepath.IsAbs(*p) {
+			continue
+		}
+		if base != "" {
+			*p = filepath.Join(base, *p)
 			continue
 		}
 		abs, err := filepath.Abs(*p)

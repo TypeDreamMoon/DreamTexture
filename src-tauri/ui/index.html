@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>DreamTexture</title>
+<!--
+  这个页面只在后端还没应答时露一下脸。真正的界面由 Go 后端在
+  http://127.0.0.1:8777 上提供，窗口起来之后会被导航过去（见 src/main.rs）。
+  留个占位是因为 Tauri 需要一份 frontendDist，而我们的前端并不由它打包。
+-->
+<style>
+  :root { color-scheme: dark light }
+  body {
+    margin: 0; height: 100vh; display: grid; place-items: center;
+    font: 14px/1.7 system-ui, "Microsoft YaHei", sans-serif;
+    background: #14140f; color: #b9b4a7;
+  }
+  .box { text-align: center }
+  .t { font-size: 15px; color: #e8e3d6; margin-bottom: 6px }
+</style>
+<div class="box">
+  <div class="t">DreamTexture</div>
+  <div>正在启动后端…</div>
+</div>

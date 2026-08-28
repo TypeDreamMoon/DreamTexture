@@ -38,3 +38,10 @@ dreamtexture.exe~
 # 变更；看历史时可以用
 #   git log --stat -- . ":!internal/web/dist"
 # 把它们滤掉。
+
+# Tauri 外壳
+/node_modules/
+/src-tauri/target/
+/src-tauri/gen/
+# sidecar 是 go build 出来的产物，不进仓库
+/src-tauri/binaries/
