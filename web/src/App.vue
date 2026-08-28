@@ -4,7 +4,7 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { NConfigProvider, NMessageProvider, NDialogProvider, NTooltip, darkTheme, zhCN, dateZhCN } from 'naive-ui'
 import DtIcon from './components/DtIcon.vue'
 import { darkOverrides, lightOverrides, applyCSSVars } from './theme'
-import { bootstrap, connectEvents, health, wsConnected, activeJobs, activeDownloads } from './store'
+import { bootstrap, connectEvents, health, wsDown, activeJobs, activeDownloads } from './store'
 import { migrateSidebar, persisted, readRaw } from './persist'
 
 // 主题：没选过就跟随系统，选过就以用户的选择为准。
@@ -128,7 +128,8 @@ const startingSecs = computed(() => {
   return seenSecs.value + Math.floor((Date.now() - seenAt.value) / 1000)
 })
 
-const statusTone = computed(() => {
+// comfyTone 只讲 ComfyUI 自己的状态，不管事件流通不通。
+const comfyTone = computed(() => {
   const h = health.value
   if (!h) return { color: 'var(--dt-danger)', text: 'ComfyUI 未连接', pulse: false }
   if (h.user_stopped) return { color: 'var(--dt-ink-faint)', text: 'ComfyUI 已停止', pulse: false }
@@ -141,6 +142,15 @@ const statusTone = computed(() => {
   if (!h.ready) return { color: 'var(--dt-warn)', text: 'ComfyUI 忙', pulse: false }
   return { color: 'var(--dt-ok)', text: 'ComfyUI 就绪', pulse: false }
 })
+
+// 事件流断了就盖过 ComfyUI 的状态：那时下面这些全是断线前的快照，还挂着
+// "就绪"是在撒谎。而且状态这一行是**侧栏收起时唯一还看得见的东西**——
+// 断线提示以前是单独一行、条件里带着 !collapsed，收起时等于什么都不提示。
+const statusTone = computed(() =>
+  wsDown.value
+    ? { color: 'var(--dt-danger)', text: '事件流断开', pulse: true }
+    : comfyTone.value,
+)
 
 // 显存单独占一行。它是这个工具里最常需要瞟一眼的数字——显存被别的程序占掉
 // 正是任务卡住不动的头号原因（见 docs/comfyui-notes.md），藏在 tooltip 里
@@ -164,6 +174,9 @@ const vram = computed(() => {
 
 const statusDetail = computed(() => {
   const h = health.value
+  if (wsDown.value) {
+    return `与后端的连接中断，正在重连 · 断线前：${comfyTone.value.text}`
+  }
   if (!h) return ''
   if (h.reason) return h.reason
   const parts: string[] = []
@@ -252,7 +265,7 @@ const statusDetail = computed(() => {
 
               <NTooltip v-if="vram" placement="right" :delay="200">
                 <template #trigger>
-                  <div class="vram">
+                  <div class="vram" :class="{ stale: wsDown }">
                     <i class="vbar" :style="{ '--pct': vram.pct + '%', '--c': vram.color }" />
                     <span class="vtext dt-faint dt-mono">{{ vram.text }}</span>
                   </div>
@@ -260,7 +273,6 @@ const statusDetail = computed(() => {
                 显存空闲 {{ vram.text }}（已用 {{ vram.pct }}%）
               </NTooltip>
 
-              <p v-if="!wsConnected && !collapsed" class="offline dt-faint">事件流断开</p>
 
               <div class="tools">
                 <a
@@ -539,10 +551,9 @@ const statusDetail = computed(() => {
   white-space: nowrap;
   overflow: hidden;
 }
-.offline {
-  margin: 0 0 2px 9px;
-  font-size: var(--dt-fs-xs);
-  color: var(--dt-warn);
+/* 事件流断了的时候显存还留在原位，但要看得出这是断线前的读数。 */
+.vram.stale {
+  opacity: 0.45;
 }
 
 .tools {

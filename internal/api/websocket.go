@@ -9,6 +9,10 @@ import (
 	"github.com/coder/websocket"
 )
 
+// HeartbeatInterval 是心跳间隔。前端按它的倍数设超时，改这里前端也要跟着改
+// （web/src/store.ts 的 STALE_AFTER）。
+const HeartbeatInterval = 15 * time.Second
+
 // websocket 把任务事件推给前端。
 //
 // 只推不收：客户端要做什么都走 REST，这样状态变更只有一条路径，不会出现
@@ -45,14 +49,30 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	ping := time.NewTicker(30 * time.Second)
-	defer ping.Stop()
+	beat := time.NewTicker(HeartbeatInterval)
+	defer beat.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ping.C:
+		case <-beat.C:
+			// 心跳发的是**文本帧**，不是协议层的 ping。
+			//
+			// 协议层 ping 浏览器是在网络层自动回 pong 的，JS 一个事件都收不到——
+			// 也就是说前端没有任何办法凭它判断对端还活着。而 close 事件并不保证
+			// 会来：标签页被冻结、机器休眠再唤醒、半开连接，都会让它丢掉，
+			// 于是界面挂着一份过期状态一直显示"已连接"（实测把后端进程杀掉，
+			// 页面照旧显示 ComfyUI 就绪）。给前端一个看得见的节拍，它才有
+			// 判据超时重连。
+			hctx, hcancel := context.WithTimeout(ctx, 10*time.Second)
+			werr := conn.Write(hctx, websocket.MessageText, []byte(`{"type":"hb"}`))
+			hcancel()
+			if werr != nil {
+				return
+			}
+			// 协议层 ping 仍然要发：写成功只说明塞进了发送缓冲区，
+			// 而 ping 等的是真正的往返，这是**服务端**发现死客户端的手段。
 			pctx, pcancel := context.WithTimeout(ctx, 10*time.Second)
 			err := conn.Ping(pctx)
 			pcancel()

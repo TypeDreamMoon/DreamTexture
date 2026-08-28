@@ -208,6 +208,8 @@ export interface BusEvent {
     | 'job.failed'
     | 'comfy.status'
     | 'model.download'
+    // 心跳。只用来让前端知道连接还活着，没有负载（见 store.ts 的 STALE_AFTER）。
+    | 'hb'
   job?: Job
   data?: unknown
 }
