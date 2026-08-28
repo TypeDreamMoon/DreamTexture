@@ -1,0 +1,121 @@
+# 打 tag 就出一个 Windows 安装包并发到 Release。
+#
+# 也可以在 Actions 页手动跑（workflow_dispatch），那时只上传构建产物、不发布——
+# 想先验一下包能不能装、能不能起来，不必先打一个 tag 出去。
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # 发 Release 要写权限
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Rust 的编译是这里最慢的一环，缓存下来。key 跟着 Cargo.lock 走。
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # 版本号从 tag 来，手动跑时保持仓库里写的那个。
+      # 三处要一致：Tauri 的包信息、安装包文件名、以及界面上报的后端版本。
+      - name: 定版本号
+        id: ver
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            V="${GITHUB_REF#refs/tags/v}"
+          else
+            V=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          node -e "
+            const fs=require('fs'), p='src-tauri/tauri.conf.json';
+            const c=JSON.parse(fs.readFileSync(p,'utf8'));
+            c.version='$V';
+            fs.writeFileSync(p, JSON.stringify(c,null,2)+'\n');
+          "
+          echo "版本 $V"
+
+      # 前端产物虽然已经提交进仓库（internal/web/dist，go:embed 的目标），
+      # 这里仍然重建一次：提交的那份可能和源码漂了，而漂了是不会有人发现的。
+      - name: 构建前端
+        run: |
+          cd web
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: 检查前端产物有没有漂
+        shell: bash
+        run: |
+          if ! git diff --quiet -- internal/web/dist; then
+            echo "::warning::仓库里提交的 internal/web/dist 与源码重建的结果不一致，本次用重建的那份"
+            git diff --stat -- internal/web/dist | tail -5
+          fi
+
+      - name: 构建后端与 sidecar
+        shell: bash
+        run: |
+          go vet ./...
+          go test ./...
+          TRIPLE=$(rustc -vV | sed -n 's/^host: //p')
+          go build -ldflags "-s -w -X main.version=${{ steps.ver.outputs.version }}" \
+            -o "src-tauri/binaries/dreamtexture-$TRIPLE.exe" ./cmd/dreamtexture
+
+      - name: 打包
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DreamTexture-${{ steps.ver.outputs.version }}-windows
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/dreamtexture-shell.exe
+          if-no-files-found: error
+
+      - name: 发布
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true # 先落成草稿，自己点开看一眼再发出去
+          generate_release_notes: true
+          files: src-tauri/target/release/bundle/nsis/*-setup.exe
+          body: |
+            ## 装之前
+
+            - Windows 10/11 x64，需要 WebView2 运行时（Win11 自带；Win10 缺的话装一次
+              [Evergreen 运行时](https://developer.microsoft.com/microsoft-edge/webview2/)）
+            - **不含 ComfyUI**。装完打开「设置 → ComfyUI 环境 → 一键部署」，
+              它会用 uv 装一份独立的 ComfyUI，不动你已有的整合包
+            - 部署要用到 git，装一个（[git-scm.com](https://git-scm.com/)）再开始
+
+            出问题先看程序旁边的 `logs/dreamtexture.log`。
+
+            ## 产物的可商用性
+
+            写实管线用的 CHORD 是 Ubisoft 的 **research-only** 许可，
+            用它分解出来的材质不可商用。界面上会标出来，`manifest.json` 里也有
+            `license_flags`。

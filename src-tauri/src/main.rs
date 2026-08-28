@@ -233,27 +233,35 @@ fn backend_addr(app: &tauri::AppHandle) -> String {
         .to_string()
 }
 
-/// config_path 找配置文件：先看程序旁边，再看打包进来的资源。
+/// config_path 给出配置文件的位置，第一次跑时从模板铺一份。
 ///
-/// 顺序不能反。装好之后用户改的是程序旁边那一份，资源目录里那份是安装包
-/// 带的初始值——反过来的话，用户改完发现没生效。
+/// 永远指向**程序旁边**那一份，不指向资源目录里的模板。两件事：
+///
+///   - 用户改的是程序旁边那份，指向模板的话改完发现没生效
+///   - 只在不存在时才铺，所以重装/升级不会把用户的设置盖掉。安装包里的
+///     模板是干净的（mode=attach、路径留空），装完让用户自己走一键部署
 fn config_path(app: &tauri::AppHandle) -> Option<PathBuf> {
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let p = dir.join("configs").join("dreamtexture.json");
-            if p.exists() {
-                return Some(p);
-            }
-        }
+    let dir = std::env::current_exe().ok()?.parent()?.join("configs");
+    let cfg = dir.join("dreamtexture.json");
+    if cfg.exists() {
+        return Some(cfg);
     }
-    let p = app
+    let tpl = app
         .path()
         .resolve(
-            "configs/dreamtexture.json",
+            "configs/dreamtexture.default.json",
             tauri::path::BaseDirectory::Resource,
         )
         .ok()?;
-    p.exists().then_some(p)
+    if !tpl.exists() {
+        return None;
+    }
+    if std::fs::create_dir_all(&dir).is_err() || std::fs::copy(&tpl, &cfg).is_err() {
+        // 铺不过去（装在只写不了的地方）就直接用模板，至少能起来；
+        // 用户改设置时后端会报写入失败，那时的报错比这里干等更有用。
+        return Some(tpl);
+    }
+    Some(cfg)
 }
 
 /// port_open 只探端口通不通，不发 HTTP 请求——为此拉一个 HTTP 客户端进来不值。

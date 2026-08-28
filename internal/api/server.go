@@ -124,6 +124,10 @@ func (s *Server) Routes() http.Handler {
 		r.Post("/deploy/cancel", s.deployCancel)
 		r.Post("/deploy/apply", s.deployApply)
 
+		r.Get("/comfy/versions", s.comfyVersions)
+		r.Post("/comfy/versions/fetch", s.fetchComfyVersions)
+		r.Post("/comfy/versions/switch", s.switchComfyVersion)
+
 		r.Get("/logs", s.logs)
 
 		r.Get("/comfy/status", s.comfyStatus)

@@ -54,6 +54,12 @@ go build -o "src-tauri/binaries/dreamtexture-$(rustc -vV | sed -n 's/^host: //p'
 外壳只负责拉起后端、等它监听、把窗口导航过去；界面仍由后端提供。
 端口上已经有一个后端在跑时它会直接附着，且关窗口不会杀掉不是它起的进程。
 
+### 发布
+
+推一个 `v*` 的 tag，GitHub Actions 会出 Windows 安装包并落成 Release 草稿
+（见 [release.md](docs/release.md)）。安装包**不含 ComfyUI**——装完由用户自己走
+「设置 → ComfyUI 环境 → 一键部署」。
+
 ## 配置
 
 `configs/dreamtexture.json` 是运行配置，设置页的改动写回它。
@@ -79,6 +85,8 @@ go build -o "src-tauri/binaries/dreamtexture-$(rustc -vV | sed -n 's/^host: //p'
 | [workflow-editing.md](docs/workflow-editing.md) | 工作流模板的往返编辑 |
 | [reference-image.md](docs/reference-image.md) | 参考图 / img2img |
 | [desktop-shell.md](docs/desktop-shell.md) | Tauri 外壳、进程生命周期、相对路径的解析基准 |
+| [comfyui-versions.md](docs/comfyui-versions.md) | ComfyUI 版本的安装/升级/回滚，浅克隆那道坎 |
+| [release.md](docs/release.md) | GitHub CI 打包发布，以及发布前修掉的两个坑 |
 
 ## 许可
 

@@ -17,6 +17,7 @@ import { RouterLink } from 'vue-router'
 import SettingRow from '../components/SettingRow.vue'
 import DeployPanel from '../components/DeployPanel.vue'
 import PerfPanel from '../components/PerfPanel.vue'
+import VersionPanel from '../components/VersionPanel.vue'
 import PageHeader from '../components/PageHeader.vue'
 import { api } from '../api/client'
 import { health, loadImagen } from '../store'
@@ -569,6 +570,15 @@ function hostOf(u?: string): string {
           </div>
         </SettingRow>
       </div>
+
+      <!-- ── ComfyUI 版本 ── -->
+      <p class="dt-label sec">ComfyUI 版本</p>
+      <p class="secnote dt-faint">
+        装哪个版本、升级、回滚都在这儿。切换会重装 ComfyUI 的依赖——它的
+        requirements.txt 在版本之间是会变的，只切代码不装依赖，轻则某些节点报缺包，
+        重则一起来就崩，而症状看着完全不像"版本切歪了"。
+      </p>
+      <VersionPanel />
 
       <!-- ── 性能 ── -->
       <p class="dt-label sec">性能</p>

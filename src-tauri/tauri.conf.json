@@ -20,7 +20,7 @@
     "externalBin": ["binaries/dreamtexture"],
     "resources": {
       "../workflows": "workflows/",
-      "../configs/dreamtexture.json": "configs/dreamtexture.json"
+      "../configs/dreamtexture.default.json": "configs/dreamtexture.default.json"
     },
     "windows": {
       "nsis": {

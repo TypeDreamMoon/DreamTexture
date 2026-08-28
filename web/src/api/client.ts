@@ -5,6 +5,8 @@ import type {
   ConfigPatch,
   DeployInfo,
   DeployOptions,
+  ComfyVersion,
+  ComfyVersionStatus,
   DeployStatus,
   FlagOption,
   Download,
@@ -132,6 +134,26 @@ export const api = {
     }),
   deletePicture: (id: string) =>
     request<{ ok: boolean }>(`/api/pictures/${id}`, { method: 'DELETE' }),
+
+  // ---- ComfyUI 版本 ----
+  // 仓库位置由后端从配置里的 main_py 推出来，不由这边指定——那个值决定了
+  // 要去哪个目录跑 git checkout。
+  comfyVersions: (kind: 'stable' | 'dev') =>
+    request<{
+      kind: string
+      versions: ComfyVersion[]
+      status: ComfyVersionStatus
+      error?: string
+    }>(`/api/comfy/versions?kind=${kind}`),
+  fetchComfyVersions: () =>
+    request<{ ok: boolean; status: ComfyVersionStatus }>('/api/comfy/versions/fetch', {
+      method: 'POST',
+    }),
+  switchComfyVersion: (ref: string, mirror = true) =>
+    request<{ ok: boolean }>('/api/comfy/versions/switch', {
+      method: 'POST',
+      body: JSON.stringify({ ref, mirror }),
+    }),
 
   // ---- ComfyUI 启动参数 ----
   // 合成放在后端：Build 与 Parse 必须是同一份逻辑的两半，分家之后

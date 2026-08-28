@@ -174,11 +174,13 @@ func (c Config) Validate() error {
 		return fmt.Errorf("imagen.flatten 只能落在 0~1，收到 %v", c.Imagen.Flatten)
 	}
 	switch c.Comfy.Mode {
-	case ModeManaged:
-		if c.Comfy.Python == "" || c.Comfy.MainPy == "" {
-			return fmt.Errorf("managed 模式需要同时配置 comfy.python 与 comfy.main_py")
-		}
-	case ModeAttach:
+	case ModeManaged, ModeAttach:
+		// managed 但路径还空着，是个**合法的中间态**：全新安装的人正是靠设置页的
+		// 一键部署来填这两个值。以前在这儿拒掉，后端就起不来，而那个页面恰恰在
+		// 后端里——最需要它的人反而打不开。
+		//
+		// 真到要用的时候由 comfy.pathsReady 拦，那儿给的话也具体得多
+		// （"还没有配置 Python 解释器。去设置页做一次一键部署"）。
 	default:
 		return fmt.Errorf("comfy.mode 只能是 managed 或 attach，收到 %q", c.Comfy.Mode)
 	}

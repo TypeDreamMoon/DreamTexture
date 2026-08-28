@@ -464,6 +464,33 @@ export interface FlagOption {
   advanced?: boolean
 }
 
+/** ComfyUI 的一个可切换版本。 */
+export interface ComfyVersion {
+  ref: string
+  short: string
+  name: string
+  date: string
+  kind: 'stable' | 'dev'
+  current: boolean
+}
+
+export interface ComfyVersionStatus {
+  available: boolean
+  reason?: string
+  dir?: string
+  remote?: string
+  branch?: string
+  ref?: string
+  short?: string
+  name?: string
+  date?: string
+  /** 浅克隆：历史不全，一个版本都列不出来，得先补一次。 */
+  shallow: boolean
+  /** 工作区有改动，切版本会冲掉，所以会被拦下。 */
+  dirty: boolean
+  dirty_files?: string[]
+}
+
 export interface DeployStep {
   key: string
   title: string

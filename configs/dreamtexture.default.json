@@ -1,0 +1,21 @@
+{
+  "addr": "127.0.0.1:8777",
+  "output_dir": "output",
+  "data_dir": "data",
+  "workflows_dir": "workflows",
+  "comfy": {
+    "mode": "attach",
+    "base_url": "http://127.0.0.1:8188",
+    "python": "",
+    "main_py": "",
+    "extra_args": ["--preview-method", "none"],
+    "auto_restart": true,
+    "reserve_vram_gb": 1
+  },
+  "imagen": {
+    "proxy": "",
+    "openai_base_url": "",
+    "flatten": 1,
+    "refine_model": ""
+  }
+}
