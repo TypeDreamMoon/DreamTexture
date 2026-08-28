@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mengye/dreamtexture/internal/nvidia"
 )
 
 // vramWarn 是"该提醒一声"的空闲显存下限（MB）。
@@ -43,7 +45,21 @@ func (s *Server) checkVRAM(r *http.Request) Check {
 	total := d.VRAMTotal >> 20
 	c.Detail = fmt.Sprintf("%s：空闲 %d MB / 共 %d MB", d.Name, free, total)
 
-	if free >= vramWarn {
+	// 系统内存回退是"显存不够"会不会变成假死的分水岭，所以两种情况都要说。
+	fb := nvidia.Query(s.Settings.Get().Comfy.Python)
+	switch {
+	case !fb.Supported:
+		// 读不到就不提，别拿一句"未知"去占用户的注意力。
+	case fb.Value == nvidia.ValueDeny:
+		c.Detail += "；系统内存回退已关闭，显存不够会直接报错而不是卡住"
+	default:
+		c.Detail += "；**系统内存回退开着**"
+	}
+
+	// 回退开着才是"卡住不动"的成因，所以它单独构成一个警告——
+	// 哪怕此刻显存还够，下一个任务撞上别的程序涨显存就会中招。
+	fallbackOn := fb.Supported && fb.Value != nvidia.ValueDeny
+	if free >= vramWarn && !fallbackOn {
 		c.Status = "ok"
 		return c
 	}
@@ -51,6 +67,12 @@ func (s *Server) checkVRAM(r *http.Request) Check {
 	c.Status = "warn"
 	c.Fix = "关掉别的吃显存的程序再生成；也可以在设置里调大「显存余量」，" +
 		"让 ComfyUI 主动把模型换到内存，而不是等驱动去悄悄降级"
+	if fallbackOn {
+		c.Fix = "去 NVIDIA 控制面板 →「管理 3D 设置」→「CUDA - 系统内存回退策略」" +
+			"改成「优先不使用系统内存回退」。开着的话显存一旦不够，驱动会悄悄改用" +
+			"内存硬算——不报错、不结束、慢几十倍，看到的就是进度条卡住不动；" +
+			"关掉之后显存不够会立刻报错，至少知道发生了什么。另外：" + c.Fix
+	}
 	// 把占着显存的大户点名列出来。用户看到"UnrealEditor"比看到一个数字有用得多。
 	if hogs := gpuHogs(ctx); len(hogs) > 0 {
 		c.Items = hogs

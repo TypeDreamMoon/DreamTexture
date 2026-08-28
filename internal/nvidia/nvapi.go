@@ -45,6 +45,13 @@ func ParseFallback(s string) Fallback {
 	}
 }
 
+// 字符串形式的取值，给跨包比较用——到处写 "deny" 字面量迟早写错一个。
+var (
+	// FallbackDeny 的字符串形式。
+	ValueDeny  = FallbackDeny.String()
+	ValueAllow = FallbackAllow.String()
+)
+
 // Status 是对外报告的状态。
 type Status struct {
 	// Supported 为 false 时 Reason 说明为什么用不了（没有 N 卡、不是 Windows…）。

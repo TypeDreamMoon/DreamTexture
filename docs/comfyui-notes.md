@@ -214,9 +214,10 @@ ComfyUI 的 IMAGE 是 `[B, H, W, C]`，但 ComfyUI-Chord 有两处返回 `[B, H,
 
 **还想更彻底**：NVIDIA 控制面板 →「管理 3D 设置」→「CUDA - 系统内存回退策略」
 改成「优先不使用系统内存回退」。改完之后显存不够会**立刻报 OOM**，
-而不是无声地慢几十倍。这是驱动级设置，不是命令行参数——但**程序能改**，
-走 NVAPI 的 `NvAPI_DRS_*` 给 python.exe 写应用配置（秋叶启动器就是这么做的）。
-我们还没实现，目前仍需手动配。
+而不是无声地慢几十倍。
+
+自检里会如实报告这一项当前是开是关（`internal/nvidia`），下一节说清了
+为什么只能读不能改。
 
 ### 不要自己设 `PYTORCH_CUDA_ALLOC_CONF`
 
@@ -257,13 +258,42 @@ torch 静默忽略，看不出任何异常。想换分配器就往 `extra_args` 
 - **`--listen` / `--port` / `--reserve-vram` 由后端自己填**，写进用户参数里
   只会和它打架（后写的赢），保存时会被拦下
 
-### 使用共享显存 / 系统内存回退
+### 使用共享显存 / 系统内存回退：能读，不能写
 
-秋叶启动器那一页里的「使用共享显存」是通过 **NVAPI 的驱动配置接口**
-（`NvAPI_DRS_*`）给 python.exe 写一条应用配置，不是命令行参数——所以它不在
-这份目录里。上面那条"程序改不了、只能手动配"的说法是错的，程序能改，
-只是要做 NVAPI 互操作。暂时仍然手动配：NVIDIA 控制面板 →「管理 3D 设置」→
-「CUDA - 系统内存回退策略」→「优先不使用系统内存回退」。
+不是命令行参数，所以不在启动参数那份目录里。它是驱动里针对某个 exe 的
+应用配置，编号 **`0x10ECECC9`**，值 1 = 不使用回退。
+
+**这个编号是实测出来的，不能靠记。** 我一开始记成 `0x10F9DC81`，
+`NvAPI_DRS_GetSettingNameFromId` 一查那其实是 "Enable application for Optimus"
+——照着写会去改一个完全无关的设置。
+
+拿到它的过程：这一项在驱动里**没有名字**，`NvAPI_DRS_EnumAvailableSettingIds`
+列出的 130 个具名设置里没有它，`GetSettingIdFromName` 按名字反查也全部失败。
+只能让写过它的程序先写一次（把秋叶启动器的「使用共享显存」关掉），
+再用 `NvAPI_DRS_SaveSettingsToFile` 把整个配置库导出来比对。同一份导出里
+MXGP 那条配置的 `0x1033CEC2` / `0x1033DCD3` 与具名清单对得上，说明解析没错。
+
+**读要绕一圈。** 无名设置会被公开读接口过滤掉：profile 明明报
+`numOfSettings=1`，`EnumSettings` 返回 0 项，`GetSetting` 报
+`SETTING_NOT_FOUND`。所以 `internal/nvidia` 的做法是——用
+`FindApplicationByName` 问出这个 exe 归哪条配置管（这一步公开接口好使），
+再从导出的配置库里把值抠出来。
+
+**写不了。** `NvAPI_DRS_SetSetting` 会拿编号去校验驱动自己的设置库，
+无名设置一律 `SETTING_NOT_FOUND`。实测过六种写法（补 `settingName`、
+补 `settingType`、补 `settingLocation`…）全部被拒，而同一段代码写已知的
+Vertical Sync 立刻 `rc=0`——所以不是调用姿势的问题。
+
+剩下唯一的路是 `NvAPI_DRS_LoadSettingsFromFile`：把整个配置库（本机 7962 条）
+导出、按未公开的二进制格式改、再整体导回。那个格式里全是绝对偏移，插入一条
+就得全局修正，改错一次影响的是机器上所有配置。**一个材质工具不该干这个**，
+所以到此为止：我们只报告状态，改还是去 NVIDIA 控制面板，或者用秋叶启动器
+那个开关。
+
+> 导出格式（逆出来的，无文档）：一条配置的记录是
+> `53 00 xx 00 | size | count | nameOffset`，其后 `count` 个 16 字节条目
+> `A4 00 10 00 | id | type | value`；`nameOffset` 是文件内的绝对偏移，
+> 指向 UTF-16 的配置名。解析见 `internal/nvidia/sysmem_windows.go`。
 
 ## 工作流模板约定
 

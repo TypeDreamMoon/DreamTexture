@@ -26,6 +26,10 @@ const (
 	fnSetSetting        = 0x577DD202
 	fnGetSetting        = 0x73BF8338
 	fnDeleteSetting     = 0xE4A26362
+
+	fnFindApplicationByName = 0xEEE566B2
+	fnGetProfileInfo        = 0x61CD6FD6
+	fnSaveSettingsToFile    = 0x2BE25DF8
 )
 
 // 结构体大小实测得来（本机 NVAPI，2026-08-28），不是照着头文件抄的。
