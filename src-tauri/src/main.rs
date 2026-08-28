@@ -14,9 +14,12 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use tauri::{Manager, RunEvent, WebviewWindow};
+use tauri::webview::{NewWindowResponse, WebviewWindowBuilder};
+use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindow};
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
+use tauri::Url;
 
 /// 后端起不来时等多久放弃。
 ///
@@ -30,30 +33,30 @@ struct Backend(Mutex<Option<CommandChild>>);
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(Backend(Mutex::new(None)))
         .setup(|app| {
             let handle = app.handle().clone();
-            let window: WebviewWindow = app
-                .get_webview_window("main")
-                .expect("主窗口不见了，检查 tauri.conf.json");
-
-            let addr = backend_addr(app.handle());
+            let addr = backend_addr(&handle);
             let url = format!("http://{addr}");
 
             // 已经有一个在跑就直接用它。等于顺手做了单实例：
-            // 再点一次图标只会多开一个窗口，而不是抢 8777 端口然后双双失败。
+            // 再点一次图标只会多开一个窗口，而不是抢端口然后双双失败。
             let already_up = port_open(&addr);
             if !already_up {
-                match spawn_backend(app.handle()) {
+                match spawn_backend(&handle) {
                     Ok(child) => {
                         *handle.state::<Backend>().0.lock().unwrap() = Some(child);
                     }
                     Err(e) => {
-                        fatal(&window, &format!("后端启动失败：{e}"));
+                        let win = build_window(&handle, &url)?;
+                        fatal(&win, &format!("后端启动失败：{e}"));
                         return Ok(());
                     }
                 }
             }
+
+            let window = build_window(&handle, &url)?;
 
             // 等它开始监听。窗口这时还是隐藏的，占位页只在出错时才露面。
             let deadline = Instant::now() + STARTUP_TIMEOUT;
@@ -61,7 +64,9 @@ fn main() {
             std::thread::spawn(move || {
                 while Instant::now() < deadline {
                     if port_open(&addr) {
-                        let _ = win.navigate(url.parse().expect("拼出来的地址不合法"));
+                        if let Ok(u) = url.parse::<Url>() {
+                            let _ = win.navigate(u);
+                        }
                         let _ = win.show();
                         let _ = win.set_focus();
                         return;
@@ -71,8 +76,7 @@ fn main() {
                 fatal(
                     &win,
                     &format!(
-                        "后端在 {} 秒内没有开始监听 {addr}。\\n\
-                         日志在程序旁边的 logs/dreamtexture.log 里。",
+                        "后端在 {} 秒内没有开始监听 {addr}。\n日志在程序旁边的 logs/dreamtexture.log 里。",
                         STARTUP_TIMEOUT.as_secs()
                     ),
                 );
@@ -92,6 +96,64 @@ fn main() {
                 }
             }
         });
+}
+
+/// build_window 建主窗口，并把外链的去处定好。
+///
+/// 窗口在这里建而不是写在 tauri.conf.json 里，就是为了挂下面两个钩子——
+/// 配置声明的窗口没地方挂。
+fn build_window(app: &tauri::AppHandle, origin: &str) -> tauri::Result<WebviewWindow> {
+    let own = origin.to_string();
+    let app_for_new = app.clone();
+    let app_for_nav = app.clone();
+    let own_for_nav = own.clone();
+
+    WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+        .title("DreamTexture")
+        .inner_size(1440.0, 900.0)
+        .min_inner_size(1024.0, 640.0)
+        .center()
+        .visible(false)
+        // target="_blank" 和 window.open 走这里。
+        //
+        // 窗口里没有浏览器的标签页，默认行为是什么都不发生——界面上那个
+        // 「打开 ComfyUI」点下去毫无反应。一律交给系统浏览器：ComfyUI 的
+        // 节点编辑器是个完整的应用，本来也不该塞进我们这个窗口里。
+        .on_new_window(move |url, _features| {
+            open_outside(&app_for_new, url.as_str());
+            NewWindowResponse::Deny
+        })
+        // 同窗口内跳到站外也一样处理。这里同时是一道边界：这个 webview 只该
+        // 显示我们自己的后端，别的地址一概不在窗口里打开。
+        .on_navigation(move |url| {
+            if is_ours(url, &own_for_nav) {
+                return true;
+            }
+            open_outside(&app_for_nav, url.as_str());
+            false
+        })
+        .build()
+}
+
+/// is_ours 判断这个地址是不是"我们自己的页面"。
+///
+/// 两类：后端提供的界面，以及 Tauri 自己那份占位页（协议是 tauri://，
+/// Windows 上表现为 http://tauri.localhost）。别的都算站外。
+fn is_ours(url: &Url, origin: &str) -> bool {
+    let s = url.as_str();
+    s.starts_with(origin)
+        || url.scheme() == "tauri"
+        || url.host_str() == Some("tauri.localhost")
+        || s == "about:blank"
+}
+
+fn open_outside(app: &tauri::AppHandle, url: &str) {
+    // 只放行 http(s)。别的协议（file:、自定义协议…）交给系统等于让页面
+    // 有能力拉起本机程序，不值这个风险。
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return;
+    }
+    let _ = app.opener().open_url(url, None::<&str>);
 }
 
 /// spawn_backend 拉起 sidecar。
@@ -145,7 +207,10 @@ fn config_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     }
     let p = app
         .path()
-        .resolve("configs/dreamtexture.json", tauri::path::BaseDirectory::Resource)
+        .resolve(
+            "configs/dreamtexture.json",
+            tauri::path::BaseDirectory::Resource,
+        )
         .ok()?;
     p.exists().then_some(p)
 }

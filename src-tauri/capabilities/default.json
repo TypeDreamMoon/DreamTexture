@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "外壳只需要一件事：把后端 sidecar 拉起来。别的什么都不给。",
+  "description": "外壳只需要两件事：拉起后端 sidecar、把外链交给系统浏览器。别的什么都不给。",
   "windows": ["main"],
   "permissions": [
     {

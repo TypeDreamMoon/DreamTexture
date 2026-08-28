@@ -8,18 +8,7 @@
   },
   "app": {
     "withGlobalTauri": false,
-    "windows": [
-      {
-        "title": "DreamTexture",
-        "width": 1440,
-        "height": 900,
-        "minWidth": 1024,
-        "minHeight": 640,
-        "resizable": true,
-        "center": true,
-        "visible": false
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }
