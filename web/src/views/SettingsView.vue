@@ -16,6 +16,7 @@ import {
 import { RouterLink } from 'vue-router'
 import SettingRow from '../components/SettingRow.vue'
 import DeployPanel from '../components/DeployPanel.vue'
+import PerfPanel from '../components/PerfPanel.vue'
 import PageHeader from '../components/PageHeader.vue'
 import { api } from '../api/client'
 import { health, loadImagen } from '../store'
@@ -535,16 +536,28 @@ function hostOf(u?: string): string {
           title="显存余量"
           desc="留给别的程序的显存。同时开着虚幻编辑器时把它调到 2~3 GB：ComfyUI 只在装载模型那一刻看一眼空闲显存，之后不再复查；被吃干净之后 Windows 显卡驱动会悄悄回退到内存硬算，不报错，但慢几十倍——症状就是进度条卡住不动"
           restart
-          stack
         >
-          <div class="line">
+          <!--
+            用 .slide 而不是 .line：.line 是给输入框设计的（只给 .n-input 发
+            flex:1），滑块在里面会塌成 0 宽；marks 的刻度标签还是绝对定位的，
+            会从这一行里溢出去压到保存按钮上。旁边「亮度场压平」是同一个形状，
+            照它来。
+          -->
+          <div class="slide">
             <NSlider
               v-model:value="reserveVRAM"
               :min="0"
               :max="8"
               :step="0.5"
-              :marks="{ 0: '不留', 2: '2G', 4: '4G', 8: '8G' }"
-              style="flex: 1"
+              :tooltip="false"
+            />
+            <NInputNumber
+              v-model:value="reserveVRAM"
+              size="small"
+              :min="0"
+              :max="8"
+              :step="0.5"
+              class="num"
             />
             <NButton
               size="small"
@@ -556,6 +569,15 @@ function hostOf(u?: string): string {
           </div>
         </SettingRow>
       </div>
+
+      <!-- ── 性能 ── -->
+      <p class="dt-label sec">性能</p>
+      <p class="secnote dt-faint">
+        ComfyUI 的启动参数。这些决定跑得快不快、爆不爆显存，但互斥的参数同时写两个
+        ComfyUI 会直接起不来——所以这里做成一组下拉框，冲突的选项根本选不到一起。
+        全部需要重启后端才生效。
+      </p>
+      <PerfPanel />
 
       <!-- ── 目录 ── -->
       <p class="dt-label sec">目录</p>

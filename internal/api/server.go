@@ -127,6 +127,8 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/logs", s.logs)
 
 		r.Get("/comfy/status", s.comfyStatus)
+		r.Get("/comfy/flags", s.comfyFlags)
+		r.Post("/comfy/flags", s.setComfyFlags)
 		r.Post("/comfy/restart", s.comfyRestart)
 		r.Post("/comfy/start", s.comfyStart)
 		r.Post("/comfy/stop", s.comfyStop)

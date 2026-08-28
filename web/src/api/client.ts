@@ -6,6 +6,7 @@ import type {
   DeployInfo,
   DeployOptions,
   DeployStatus,
+  FlagOption,
   Download,
   ImagenProvider,
   ManagerCapability,
@@ -131,6 +132,23 @@ export const api = {
     }),
   deletePicture: (id: string) =>
     request<{ ok: boolean }>(`/api/pictures/${id}`, { method: 'DELETE' }),
+
+  // ---- ComfyUI 启动参数 ----
+  // 合成放在后端：Build 与 Parse 必须是同一份逻辑的两半，分家之后
+  // "存进去的和读出来的不一样"这种 bug 会非常难查。
+  comfyFlags: () =>
+    request<{
+      catalog: FlagOption[]
+      values: Record<string, string>
+      extra: string
+      managed: string[]
+      raw: string
+    }>('/api/comfy/flags'),
+  setComfyFlags: (values: Record<string, string>, extra: string) =>
+    request<{ ok: boolean; need_restart: string[]; args: string }>('/api/comfy/flags', {
+      method: 'POST',
+      body: JSON.stringify({ values, extra }),
+    }),
 
   // ---- 提示词扩写 ----
   // 列不出来不算错，所以 error 是可选字段而不是抛异常——网关不提供 /models、

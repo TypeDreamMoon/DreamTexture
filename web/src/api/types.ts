@@ -438,6 +438,28 @@ export interface Refined {
   elapsed_ms: number
 }
 
+/** ComfyUI 启动参数目录里的一项。 */
+export interface FlagChoice {
+  value: string
+  label: string
+  note?: string
+  /** 这个选项展开成的参数；仅界面预览用，实际合成在后端做。 */
+  args?: string[]
+}
+
+export interface FlagOption {
+  key: string
+  label: string
+  help: string
+  kind: 'choice' | 'bool'
+  icon?: string
+  choices?: FlagChoice[]
+  flag?: string
+  /** true = 开关打开时**不加**这个参数（ComfyUI 的开关多是 --disable-xxx）。 */
+  invert?: boolean
+  advanced?: boolean
+}
+
 export interface DeployStep {
   key: string
   title: string

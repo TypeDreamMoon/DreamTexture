@@ -214,7 +214,9 @@ ComfyUI 的 IMAGE 是 `[B, H, W, C]`，但 ComfyUI-Chord 有两处返回 `[B, H,
 
 **还想更彻底**：NVIDIA 控制面板 →「管理 3D 设置」→「CUDA - 系统内存回退策略」
 改成「优先不使用系统内存回退」。改完之后显存不够会**立刻报 OOM**，
-而不是无声地慢几十倍。这是驱动级设置，程序改不了，只能手动配。
+而不是无声地慢几十倍。这是驱动级设置，不是命令行参数——但**程序能改**，
+走 NVAPI 的 `NvAPI_DRS_*` 给 python.exe 写应用配置（秋叶启动器就是这么做的）。
+我们还没实现，目前仍需手动配。
 
 ### 不要自己设 `PYTORCH_CUDA_ALLOC_CONF`
 
@@ -229,6 +231,39 @@ else:               env_var += ",backend:cudaMallocAsync"
 而 `expandable_segments` 只对原生缓存分配器有效，拼在一起等于白写——
 torch 静默忽略，看不出任何异常。想换分配器就往 `extra_args` 里加
 `--disable-cuda-malloc`，那才是 ComfyUI 认的开关。
+
+## 启动参数做成了控件
+
+设置页「性能」那一节把 ComfyUI 的启动参数图形化，见 `internal/comfy/flags.go`
+与 `flags_parse.go`。清单对着本机 0.9.2 的 `comfy/cli_args.py` 核过。
+
+**互斥组一一对应成下拉框。** 这是做这件事最主要的理由：`vram_group`、
+`attn_group`、`fpunet_group` 这些组里同时写两个，ComfyUI 直接起不来，
+而用户看到的只是"启动失败"，没有任何线索指向参数冲突。做成下拉之后
+冲突的选项根本选不到一起。
+
+**认不出来的参数原样保留。** `Parse` 返回 `leftover`，它们落进界面上的
+「其他参数」。这份目录跟不上上游是早晚的事，跟不上的时候把用户手写的
+`--whitelist-custom-nodes` 吃掉是不可接受的。`flags_test.go` 盯着这条。
+
+几个容易写错的地方：
+
+- **`--k=v` 和 `--k v` 都要认。** argparse 两种都吃；不统一的话
+  `--preview-method=none` 匹配不上，界面显示"自动"而实际跑的是 none
+- **长选项优先匹配。** `--fast fp16_accumulation` 必须先于光秃秃的 `--fast`
+  试，否则界面把"仅 fp16 累加"显示成"全开"，那是两种不同的行为
+- **反向开关。** ComfyUI 的开关多是 `--disable-xxx`，界面上正着说才好懂，
+  所以有 `Invert`：开着=不加参数，关掉才加。别让用户去理解双重否定
+- **`--listen` / `--port` / `--reserve-vram` 由后端自己填**，写进用户参数里
+  只会和它打架（后写的赢），保存时会被拦下
+
+### 使用共享显存 / 系统内存回退
+
+秋叶启动器那一页里的「使用共享显存」是通过 **NVAPI 的驱动配置接口**
+（`NvAPI_DRS_*`）给 python.exe 写一条应用配置，不是命令行参数——所以它不在
+这份目录里。上面那条"程序改不了、只能手动配"的说法是错的，程序能改，
+只是要做 NVAPI 互操作。暂时仍然手动配：NVIDIA 控制面板 →「管理 3D 设置」→
+「CUDA - 系统内存回退策略」→「优先不使用系统内存回退」。
 
 ## 工作流模板约定
 
