@@ -151,6 +151,31 @@ func Catalog(gpus []GPU) []Option {
 			},
 		},
 		{
+			Key: "precision", Label: "通用模型精度", Icon: "sliders", Kind: KindChoice, Advanced: true,
+			Help: "一刀切地压住所有模型的精度。下面几项是分别指定，冲突时以更具体的那个为准",
+			Choices: []Choice{
+				{Value: "", Label: "由 ComfyUI 决定"},
+				{Value: "fp16", Label: "半精度 fp16", Args: []string{"--force-fp16"}},
+				{Value: "fp32", Label: "全精度 fp32", Args: []string{"--force-fp32"},
+					Note: "最稳，也最吃显存"},
+			},
+		},
+		{
+			Key: "upcast", Label: "注意力精度提升", Icon: "sliders", Kind: KindChoice, Advanced: true,
+			Help: "把交叉注意力升到更高精度算。能缓解某些模型的黑图，代价是慢一些",
+			Choices: []Choice{
+				{Value: "", Label: "由 ComfyUI 决定"},
+				{Value: "on", Label: "强制提升", Args: []string{"--force-upcast-attention"}},
+				{Value: "off", Label: "禁止提升", Args: []string{"--dont-upcast-attention"}},
+			},
+		},
+		{
+			Key: "xformers", Label: "允许使用 xFormers", Icon: "flow", Kind: KindBool, Advanced: true,
+			Help:   "装了 xformers 时 ComfyUI 会自动用上。这里关掉可以在怀疑它出问题时排除掉",
+			Flag:   "--disable-xformers",
+			Invert: true,
+		},
+		{
 			Key: "unet", Label: "UNet 精度", Icon: "sliders", Kind: KindChoice, Advanced: true,
 			Help: "降精度省显存也更快，但可能出黑图。拿不准就别动",
 			Choices: []Choice{
