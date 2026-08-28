@@ -13,10 +13,15 @@ configs/secrets.json.bak-*
 *.db-wal
 *.db-shm
 *.log
+# 后端日志（含轮转出来的 .log.1，*.log 匹配不到它）
+/logs/
 
 # Go
 /bin/
 dreamtexture.exe
+# 交叉编译/中断留下的临时产物
+dreamtexture.exe~
+*.exe~
 
 # 前端
 /web/node_modules/

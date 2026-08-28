@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/mengye/dreamtexture/internal/api"
+	"github.com/mengye/dreamtexture/internal/applog"
 	"github.com/mengye/dreamtexture/internal/catalog"
 	"github.com/mengye/dreamtexture/internal/comfy"
 	"github.com/mengye/dreamtexture/internal/config"
@@ -40,20 +42,47 @@ func main() {
 	}
 }
 
-func run() error {
+func run() (err error) {
 	cfgPath := flag.String("config", "configs/dreamtexture.json", "配置文件路径")
 	debug := flag.Bool("debug", false, "输出调试日志")
+	logDir := flag.String("log-dir", "", "日志目录，留空则放在程序旁边的 logs/")
 	flag.Parse()
 
 	level := slog.LevelInfo
 	if *debug {
 		level = slog.LevelDebug
 	}
-	// 日志同时留一份在内存里供界面显示。控制台那份仍然照打——
-	// 后端起不来的时候，界面也就无从看起了。
+
+	// 日志有三个去处，缺一不可：
+	//   标准输出 —— 从终端跑时最直接
+	//   内存环形缓冲 —— 界面上的控制台页
+	//   文件 —— 前两个都靠不住的时候：双击启动没有控制台，进程退了内存也就没了，
+	//           而最需要日志的恰恰是"起不来"和"上次崩了"
+	out := io.Writer(os.Stdout)
+	logFile, logPath, ferr := applog.Open(*logDir)
+	if ferr == nil {
+		defer logFile.Close()
+		applog.Banner(logFile, version, [2]string{"配置", *cfgPath})
+		out = io.MultiWriter(os.Stdout, logFile)
+	}
+
 	logs := logbuf.New(4000)
 	log := slog.New(logbuf.NewHandler(
-		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level}), logs))
+		slog.NewTextHandler(out, &slog.HandlerOptions{Level: level}), logs))
+
+	// 启动失败也要留在文件里。以前这类错误只往 stderr 打一行就退出，
+	// 而没有控制台的时候那一行谁也看不见。
+	defer func() {
+		if err != nil {
+			log.Error("启动失败", "err", err)
+		}
+	}()
+
+	if ferr != nil {
+		log.Warn("日志文件打不开，只留在控制台与界面上", "err", ferr)
+	} else {
+		log.Info("日志文件", "路径", logPath)
+	}
 
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
@@ -64,6 +93,12 @@ func run() error {
 			return err
 		}
 	}
+
+	// 路径都是 finalize 之后的绝对路径，和配置文件里写的未必一样。
+	// 排查"它到底在读哪个目录"时，这一行省掉一轮来回。
+	log.Info("配置已载入",
+		"输出", cfg.OutputDir, "数据", cfg.DataDir, "工作流", cfg.WorkflowsDir,
+		"ComfyUI模式", cfg.Comfy.Mode, "ComfyUI地址", cfg.Comfy.BaseURL)
 
 	reg := workflow.NewRegistry(cfg.WorkflowsDir)
 	if err := reg.Load(); err != nil {
