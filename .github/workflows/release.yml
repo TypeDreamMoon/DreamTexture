@@ -107,7 +107,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          draft: true # 先落成草稿，自己点开看一眼再发出去
+          draft: false # 直接发出去，不落草稿
           generate_release_notes: true
           files: src-tauri/target/release/bundle/nsis/*-setup.exe
           body: |
