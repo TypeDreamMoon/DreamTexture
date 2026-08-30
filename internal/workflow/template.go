@@ -219,6 +219,36 @@ type Meta struct {
 	// Source 非空表示底图来自外部服务，由后端先取图再提交工作流。
 	Source *Source `json:"source,omitempty"`
 
+	// Segment / Export / Import：这份声明是不是"半条管线"，以及两段之间那根线
+	// 接在哪儿。详见 segment.go 与 compose.go。
+	Segment SegmentKind  `json:"segment,omitempty"`
+	Export  *SegmentPort `json:"export,omitempty"`
+	// Imports 是复数：底图在分解段里往往不止一个去处。CHORD 段既要把它喂给
+	// 估计节点，也要原样存一份底图；传统派生段则是底图**本身就是** BaseColor，
+	// 同时还要抽亮度。只留一个入口的话，另一处会悬空，ComfyUI 直接拒绝执行。
+	Imports []SegmentPort `json:"imports,omitempty"`
+
+	// Domain 是出图段产出的画面属于哪一类（realistic | stylized）。
+	// ExpectsDomain 是分解段吃得下哪些类。
+	//
+	// 两者不匹配**不禁止**，只在界面上提醒——手绘图对 CHORD 是分布外输入，
+	// 出来的法线会是糊的，但那是用户该自己决定要不要试的事。
+	Domain        string   `json:"domain,omitempty"`
+	ExpectsDomain []string `json:"expects_domain,omitempty"`
+
+	// 以下三项只有组合出来的管线才有，供界面用两个下拉还原选择、并在两段
+	// 搭不上时给出提醒。文件里不写。
+	SourceSegment    string `json:"source_segment,omitempty"`
+	DecomposeSegment string `json:"decompose_segment,omitempty"`
+	Mismatch         string `json:"mismatch,omitempty"`
+
+	// Licenses 是这条管线涉及的全部许可提示。
+	//
+	// 单文件模板最多一条（从 license_notice 读进来）；组合出来的管线是两段的
+	// **并集**——只取一边的话，"云端底图 + CHORD 分解"会把 CHORD 的
+	// research-only 标记弄丢，那是会让人拿去商用的错误。
+	Licenses []LicenseNotice `json:"licenses,omitempty"`
+
 	LicenseNotice     *LicenseNotice     `json:"license_notice,omitempty"`
 	ModelRequirements []ModelRequirement `json:"model_requirements"`
 	NodePacks         []string           `json:"node_packs"`
@@ -247,10 +277,13 @@ type Registry struct {
 	mu   sync.RWMutex
 	dir  string
 	list map[string]*Template
+	// segs 是半条管线的声明。它们自己跑不了（出图段没有落盘节点，分解段的
+	// 入口悬空），所以不进 list——那个表里的东西必须个个都能直接提交。
+	segs map[string]*Template
 }
 
 func NewRegistry(dir string) *Registry {
-	return &Registry{dir: dir, list: map[string]*Template{}}
+	return &Registry{dir: dir, list: map[string]*Template{}, segs: map[string]*Template{}}
 }
 
 // Load 扫描目录并载入全部 <id>.params.json 及其模板。
@@ -260,6 +293,7 @@ func (r *Registry) Load() error {
 		return fmt.Errorf("读取工作流目录 %s: %w", r.dir, err)
 	}
 	loaded := map[string]*Template{}
+	segs := map[string]*Template{}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".params.json") {
 			continue
@@ -271,15 +305,80 @@ func (r *Registry) Load() error {
 		if _, dup := loaded[t.Meta.ID]; dup {
 			return fmt.Errorf("工作流 id 重复: %s", t.Meta.ID)
 		}
+		if _, dup := segs[t.Meta.ID]; dup {
+			return fmt.Errorf("工作流 id 重复: %s", t.Meta.ID)
+		}
+		if t.Meta.Segment != SegmentNone {
+			segs[t.Meta.ID] = t
+			continue
+		}
 		loaded[t.Meta.ID] = t
 	}
+
+	// 组合在这里就拼好，拼出来的是普通 Template。下游拿到的东西跟手写的完整
+	// 模板没有区别，所以渲染、提交、manifest、环境自检全都不用知道有段这回事。
+	composed, err := composeAll(segs)
+	if err != nil {
+		return err
+	}
+	for id, t := range composed {
+		if _, dup := loaded[id]; dup {
+			return fmt.Errorf("组合出的工作流 id 与既有模板重复: %s", id)
+		}
+		loaded[id] = t
+	}
+
 	if len(loaded) == 0 {
 		return fmt.Errorf("%s 下没有找到任何 *.params.json 工作流声明", r.dir)
 	}
 	r.mu.Lock()
 	r.list = loaded
+	r.segs = segs
 	r.mu.Unlock()
 	return nil
+}
+
+// composeAll 把每个出图段与每个分解段两两拼起来。
+func composeAll(segs map[string]*Template) (map[string]*Template, error) {
+	var sources, decs []*Template
+	for _, t := range segs {
+		switch t.Meta.Segment {
+		case SegmentSource:
+			sources = append(sources, t)
+		case SegmentDecompose:
+			decs = append(decs, t)
+		}
+	}
+	sortByID(sources)
+	sortByID(decs)
+
+	out := map[string]*Template{}
+	for _, s := range sources {
+		for _, d := range decs {
+			t, err := Compose(s, d)
+			if err != nil {
+				return nil, fmt.Errorf("拼接 %s + %s: %w", s.Meta.ID, d.Meta.ID, err)
+			}
+			out[t.Meta.ID] = t
+		}
+	}
+	return out, nil
+}
+
+func sortByID(ts []*Template) {
+	sort.Slice(ts, func(i, j int) bool { return ts[i].Meta.ID < ts[j].Meta.ID })
+}
+
+// Segments 返回全部半条管线的声明，供界面渲染那两个下拉。
+func (r *Registry) Segments() []*Template {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]*Template, 0, len(r.segs))
+	for _, t := range r.segs {
+		out = append(out, t)
+	}
+	sortByID(out)
+	return out
 }
 
 func loadTemplate(dir, paramsFile string) (*Template, error) {
@@ -299,6 +398,13 @@ func loadTemplate(dir, paramsFile string) (*Template, error) {
 	}
 	if meta.Kind != KindMaterial && meta.Kind != KindImage {
 		return nil, fmt.Errorf("%s 的 kind 只能是 material 或 image，收到 %q", paramsFile, meta.Kind)
+	}
+	if err := validateSegment(&meta); err != nil {
+		return nil, fmt.Errorf("工作流 %s: %w", meta.ID, err)
+	}
+	// 文件里一份声明最多带一条许可提示；组合出来的管线才会有多条（两段的并集）。
+	if meta.LicenseNotice != nil {
+		meta.Licenses = []LicenseNotice{*meta.LicenseNotice}
 	}
 
 	// 纯云端出图没有节点图可言，模板文件那一步整个跳过。

@@ -2,7 +2,7 @@
   "addr": "127.0.0.1:8777",
   "comfy": {
     "auto_restart": true,
-    "base_url": "http://127.0.0.1:8288",
+    "base_url": "http://127.0.0.1:8188",
     "extra_args": [
       "--preview-method",
       "none"

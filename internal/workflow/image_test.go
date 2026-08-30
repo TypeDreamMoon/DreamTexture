@@ -3,8 +3,9 @@ package workflow
 import "testing"
 
 // 图片管线的两种形态都要立得住：
-//   本地——有节点图，出且只出一张图
-//   云端直出——没有节点图，参数只喂给 API
+//
+//	本地——有节点图，出且只出一张图
+//	云端直出——没有节点图，参数只喂给 API
 func TestImageWorkflows(t *testing.T) {
 	reg := repoWorkflows(t)
 	var local, direct int
