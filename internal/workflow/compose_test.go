@@ -169,14 +169,79 @@ func TestComposeRejectsTitleCollision(t *testing.T) {
 	}
 }
 
-func TestComposeRejectsParamKeyCollision(t *testing.T) {
+func TestComposeRejectsParamNameClash(t *testing.T) {
 	dec := decTemplate()
-	dec.Meta.Params[0].Key = "prompt" // 与出图段撞键
+	dec.Meta.Params[0].Key = "prompt" // 与出图段撞键，但类型不同
 	dec.Meta.Params[0].Target = json.RawMessage(`"dt.dec.in.width"`)
 	_, err := Compose(srcTemplate(), dec)
 	if err == nil {
-		t.Fatal("参数键撞了必须拒绝：前端只会渲染一个控件，另一个永远是默认值且看不出来")
+		t.Fatal("撞名且类型不同必须拒绝：前端只会渲染一个控件，另一个永远是默认值且看不出来")
 	}
+}
+
+func TestComposeMergesSharedParam(t *testing.T) {
+	// 分辨率就是这种：出图段拿它定 latent 尺寸，分解段拿它定常量图尺寸，
+	// 说的是同一个值。合并成一个控件、target 取并集。
+	src := srcTemplate()
+	src.Meta.Params = append(src.Meta.Params, Param{
+		Key: "resolution", Type: "int", Default: 1024,
+		Target: json.RawMessage(`"dt.src.ckpt.ckpt_name"`),
+	})
+	dec := decTemplate()
+	dec.Meta.Params = append(dec.Meta.Params, Param{
+		Key: "resolution", Type: "int", Default: 1024,
+		Target: json.RawMessage(`"dt.dec.in.width"`),
+	})
+	got, err := Compose(src, dec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	var merged Param
+	for _, p := range got.Meta.Params {
+		if p.Key == "resolution" {
+			n++
+			merged = p
+		}
+	}
+	if n != 1 {
+		t.Fatalf("resolution 出现了 %d 次，应当合并成一个控件", n)
+	}
+	if ts := merged.targets(); len(ts) != 2 {
+		t.Errorf("target 没取并集，是 %v", ts)
+	}
+}
+
+func TestComposeExpandsImportPlaceholder(t *testing.T) {
+	// 云端底图那条管线要在无缝重整为 0 时把底图直接喂给分解链，但"分解链的入口"
+	// 叫什么取决于配了哪个分解段。出图段写 @import，拼接时展开。
+	src := srcTemplate()
+	src.Meta.Params = append(src.Meta.Params, Param{
+		Key: "tile_fix", Type: "float", Default: 0.45,
+		Target:         json.RawMessage(`"dt.src.positive.text"`),
+		RewireWhenZero: []Rewire{{Node: ImportPlaceholder, Source: "dt.src.ckpt", Slot: 0}},
+	})
+	got, err := Compose(src, decTemplate())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range got.Meta.Params {
+		if p.Key != "tile_fix" {
+			continue
+		}
+		if len(p.RewireWhenZero) != 2 {
+			t.Fatalf("@import 应当展开成分解段的两个入口，得到 %d 条", len(p.RewireWhenZero))
+		}
+		got := map[string]string{}
+		for _, rw := range p.RewireWhenZero {
+			got[rw.Node] = rw.Input
+		}
+		if got["dt.dec.in"] != "image" || got["dt.dec.save_src"] != "images" {
+			t.Errorf("展开结果不对：%v", got)
+		}
+		return
+	}
+	t.Fatal("组合里找不到 tile_fix")
 }
 
 func TestComposeIsDeterministic(t *testing.T) {

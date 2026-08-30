@@ -1,0 +1,149 @@
+{
+  "id": "src-local-realistic-v1",
+  "version": 1,
+  "segment": "source",
+  "name": "本地 SDXL · 写实",
+  "domain": "realistic",
+  "description": "本机 SDXL 出图，UNet 与 VAE 都换成 circular padding，出来的图是数学级无缝的。",
+  "template": "src-local-realistic-v1.json",
+  "resolution": 1024,
+  "tileable": true,
+  "export": {
+    "node": "dt.decode",
+    "slot": 0
+  },
+  "model_requirements": [
+    {
+      "kind": "checkpoint",
+      "file": "Juggernaut-XL-v9.safetensors",
+      "dir": "checkpoints",
+      "size_bytes": 7105348188,
+      "source": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
+      "download_url": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+      "auth": "none"
+    }
+  ],
+  "node_packs": [
+    "ComfyUI-seamless-tiling"
+  ],
+  "params": [
+    {
+      "key": "prompt",
+      "label": "提示词",
+      "type": "string",
+      "multiline": true,
+      "target": "dt.positive.text",
+      "prefix": "texture of ",
+      "suffix": ", top down view, seamless tileable, orthographic, flat even lighting, no shadows",
+      "default": "large old broken rocks with moss",
+      "note": "CHORD 对平光输入敏感，后缀的平光约束不要去掉"
+    },
+    {
+      "key": "negative",
+      "label": "负面词",
+      "type": "string",
+      "multiline": true,
+      "target": "dt.negative.text",
+      "default": "perspective, vignette, cast shadow, specular highlight, blurry, watermark, text, border"
+    },
+    {
+      "key": "resolution",
+      "label": "分辨率",
+      "type": "enum",
+      "options": [
+        768,
+        1024
+      ],
+      "target": [
+        "dt.latent.width",
+        "dt.latent.height"
+      ],
+      "default": 1024,
+      "note": "CHORD 最佳工作分辨率为 1024"
+    },
+    {
+      "key": "seed",
+      "label": "种子",
+      "type": "int",
+      "target": "dt.sampler.seed",
+      "default": -1
+    },
+    {
+      "key": "reference",
+      "label": "参考图",
+      "type": "image",
+      "target": "dt.reference_image.image",
+      "rewire_when_set": {
+        "node": "dt.sampler",
+        "input": "latent_image",
+        "source": "dt.reference_encode",
+        "slot": 0
+      },
+      "drop_when_empty": [
+        "dt.reference_image",
+        "dt.reference_scale",
+        "dt.reference_encode"
+      ],
+      "note": "留空为纯文生图。给了参考图就变成在它基础上重绘，重绘幅度在高级参数里调"
+    }
+  ],
+  "advanced": [
+    {
+      "key": "steps",
+      "label": "步数",
+      "type": "int",
+      "min": 10,
+      "max": 60,
+      "target": "dt.sampler.steps",
+      "default": 30
+    },
+    {
+      "key": "cfg",
+      "label": "CFG",
+      "type": "float",
+      "min": 1,
+      "max": 15,
+      "target": "dt.sampler.cfg",
+      "default": 7
+    },
+    {
+      "key": "sampler",
+      "label": "采样器",
+      "type": "string",
+      "target": "dt.sampler.sampler_name",
+      "default": "dpmpp_2m"
+    },
+    {
+      "key": "scheduler",
+      "label": "调度器",
+      "type": "string",
+      "target": "dt.sampler.scheduler",
+      "default": "karras"
+    },
+    {
+      "key": "denoise",
+      "label": "重绘幅度",
+      "type": "float",
+      "min": 0.1,
+      "max": 1.0,
+      "target": "dt.sampler.denoise",
+      "default": 1.0,
+      "note": "仅在给了参考图时有意义。0.3~0.5 保留原图结构做翻新，0.6~0.8 只借大色调，1.0 等于无视参考图"
+    },
+    {
+      "key": "reference_size",
+      "label": "参考图缩放",
+      "type": "enum",
+      "options": [
+        768,
+        1024
+      ],
+      "target": [
+        "dt.reference_scale.width",
+        "dt.reference_scale.height"
+      ],
+      "default": 1024,
+      "note": "参考图会先居中裁切缩放到这个尺寸，应与出图分辨率一致"
+    }
+  ]
+}

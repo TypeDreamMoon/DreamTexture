@@ -1,0 +1,109 @@
+{
+  "id": "dec-chord-v1",
+  "version": 1,
+  "segment": "decompose",
+  "name": "CHORD 分解",
+  "expects_domain": [
+    "realistic"
+  ],
+  "description": "交给 Ubisoft CHORD 一步分解出 BaseColor/Normal/Roughness/Metallic，再由法线反推高度、派生 AO 并打包 ORM。",
+  "template": "dec-chord-v1.json",
+  "tileable": true,
+  "imports": [
+    {
+      "node": "dt.pbr_estimate",
+      "input": "image"
+    },
+    {
+      "node": "dt.out.source",
+      "input": "images"
+    }
+  ],
+  "license_notice": {
+    "component": "CHORD (dt.pbr_estimate / dt.chord_model)",
+    "license": "Ubisoft Machine Learning License (Research-Only, Copyleft)",
+    "commercial": false,
+    "replaceable_segment": "dt.pbr_estimate",
+    "alternatives": [
+      "Marigold IID appearance (OpenRAIL++)",
+      "PBRFusion4 (Apache 2.0)"
+    ]
+  },
+  "model_requirements": [
+    {
+      "kind": "checkpoint",
+      "file": "chord_v1.safetensors",
+      "dir": "checkpoints",
+      "size_bytes": 2761211350,
+      "source": "https://huggingface.co/Ubisoft/ubisoft-laforge-chord",
+      "download_url": "https://huggingface.co/Ubisoft/ubisoft-laforge-chord/resolve/main/chord_v1.safetensors",
+      "auth": "hf-gated",
+      "note": "gated=auto：先登录 HuggingFace 并在模型页同意协议，再在设置里填好 HF 令牌即可自动下载"
+    }
+  ],
+  "node_packs": [
+    "ComfyUI-Chord",
+    "ComfyUI-TextureAlchemy",
+    "ComfyUI-DreamTexture"
+  ],
+  "params": [],
+  "advanced": [
+    {
+      "key": "ao_radius",
+      "label": "AO 半径",
+      "type": "int",
+      "min": 4,
+      "max": 64,
+      "target": "dt.derive_ao.radius",
+      "default": 36
+    },
+    {
+      "key": "ao_strength",
+      "label": "AO 强度",
+      "type": "float",
+      "min": 0,
+      "max": 3,
+      "target": "dt.derive_ao.strength",
+      "default": 2.2
+    }
+  ],
+  "outputs": {
+    "source": {
+      "node": "dt.out.source",
+      "colorspace": "srgb",
+      "role": "reference",
+      "note": "未经分解的原始生成图，仅作对照留档"
+    },
+    "basecolor": {
+      "node": "dt.out.basecolor",
+      "colorspace": "srgb"
+    },
+    "normal": {
+      "node": "dt.out.normal",
+      "colorspace": "linear",
+      "y": "directx",
+      "note": "CHORD 原生输出为 OpenGL(Y+)，已实测确认（corr(G-0.5, grad_y) = -0.91）；工作流内经 dt.normal_to_ue 转成 DirectX，与手绘管线统一为 UE 原生方向"
+    },
+    "roughness": {
+      "node": "dt.out.roughness",
+      "colorspace": "linear"
+    },
+    "metallic": {
+      "node": "dt.out.metallic",
+      "colorspace": "linear"
+    },
+    "ao": {
+      "node": "dt.out.ao",
+      "colorspace": "linear"
+    },
+    "height": {
+      "node": "dt.out.height",
+      "colorspace": "linear"
+    },
+    "orm": {
+      "node": "dt.out.orm",
+      "colorspace": "linear",
+      "packing": "R=ao,G=roughness,B=metallic"
+    }
+  }
+}

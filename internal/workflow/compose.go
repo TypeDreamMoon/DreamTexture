@@ -8,6 +8,16 @@ import (
 	"strings"
 )
 
+// ImportPlaceholder 让出图段在不知道对面是谁的前提下引用分解段的入口。
+//
+// 云端底图那条管线需要它：无缝重整强度调到 0 时要把底图**直接**喂给分解链、
+// 整条 SDXL 支路删掉。但"分解链的入口"叫什么，取决于配的是哪个分解段
+// （CHORD 是 dt.pbr_estimate，传统派生是 dt.luminance）。写死任何一个名字都会
+// 让出图段只能配那一种分解，正是分段要消除的耦合。
+//
+// 拼接时它展开成分解段的每一个 import 端口。
+const ImportPlaceholder = "@import"
+
 // ComposedID 拼出组合管线的 id。
 //
 // 分隔符用 '.'：这个 id 会进任务记录、也会出现在接口路径里，'+' 在查询串里
@@ -200,22 +210,13 @@ func mergeMeta(src, dec *Meta) (*Meta, error) {
 		m.Resolution = dec.Resolution
 	}
 
-	// 参数键必须唯一：撞了的话前端只会渲染一个控件，另一段那个参数就永远是
-	// 默认值——图照跑，结果不对，而且看不出来。
-	seen := map[string]string{}
-	for _, side := range []struct {
-		who string
-		ps  []Param
-	}{{src.ID, src.AllParams()}, {dec.ID, dec.AllParams()}} {
-		for _, p := range side.ps {
-			if other, dup := seen[p.Key]; dup {
-				return nil, fmt.Errorf("参数键 %q 在 %s 和 %s 里都有", p.Key, other, side.who)
-			}
-			seen[p.Key] = side.who
-		}
+	var err error
+	if m.Params, err = mergeParams(src.Params, dec.Params, dec.Imports); err != nil {
+		return nil, err
 	}
-	m.Params = append(append([]Param{}, src.Params...), dec.Params...)
-	m.Advanced = append(append([]Param{}, src.Advanced...), dec.Advanced...)
+	if m.Advanced, err = mergeParams(src.Advanced, dec.Advanced, dec.Imports); err != nil {
+		return nil, err
+	}
 
 	m.Licenses = append(append([]LicenseNotice{}, src.Licenses...), dec.Licenses...)
 	m.ModelRequirements = mergeRequirements(src.ModelRequirements, dec.ModelRequirements)
@@ -267,4 +268,78 @@ func mergeStrings(a, b []string) []string {
 		}
 	}
 	return out
+}
+
+// mergeParams 合并两段的参数声明，并把 @import 展开成分解段的入口。
+//
+// 同名参数**不是**错误，而是合并：分辨率就是典型——出图段要用它定 latent 尺寸，
+// 传统派生段要用它定常量图尺寸，两边说的是同一个值。取 target 的并集即可。
+//
+// 但只在类型一致时才合并。类型都不一样说明是两个不相干的东西撞了名字，那种情况
+// 必须拦：前端只会渲染一个控件，另一段那个参数永远停在默认值——图照跑，结果不对，
+// 而且完全看不出来。
+func mergeParams(a, b []Param, imports []SegmentPort) ([]Param, error) {
+	out := make([]Param, 0, len(a)+len(b))
+	at := map[string]int{}
+	for _, p := range append(append([]Param{}, a...), b...) {
+		p = expandImports(p, imports)
+		i, dup := at[p.Key]
+		if !dup {
+			at[p.Key] = len(out)
+			out = append(out, p)
+			continue
+		}
+		merged, err := mergeParam(out[i], p)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = merged
+	}
+	return out, nil
+}
+
+func mergeParam(a, b Param) (Param, error) {
+	if a.Type != b.Type {
+		return a, fmt.Errorf("参数键 %q 在两段里类型不同（%s vs %s），这是撞名不是同一个参数", a.Key, a.Type, b.Type)
+	}
+	if a.Default != nil && b.Default != nil && !sameScalar(a.Default, b.Default) {
+		return a, fmt.Errorf("参数键 %q 在两段里默认值不同（%v vs %v）", a.Key, a.Default, b.Default)
+	}
+	ts := append(a.targets(), b.targets()...)
+	raw, err := json.Marshal(ts)
+	if err != nil {
+		return a, err
+	}
+	a.Target = raw
+	if a.Default == nil {
+		a.Default = b.Default
+	}
+	return a, nil
+}
+
+// expandImports 把改接声明里的 @import 换成分解段的每一个入口端口。
+func expandImports(p Param, imports []SegmentPort) Param {
+	expand := func(in []Rewire) []Rewire {
+		var out []Rewire
+		for _, rw := range in {
+			if rw.Node != ImportPlaceholder {
+				out = append(out, rw)
+				continue
+			}
+			for _, im := range imports {
+				out = append(out, Rewire{Node: im.Node, Input: im.Input, Source: rw.Source, Slot: rw.Slot})
+			}
+		}
+		return out
+	}
+	if len(p.RewireWhenZero) > 0 {
+		p.RewireWhenZero = expand(p.RewireWhenZero)
+	}
+	if rw := p.RewireWhenSet; rw != nil && rw.Node == ImportPlaceholder && len(imports) > 0 {
+		// 单条改接展开成多条时只能保留第一个入口——RewireWhenSet 的字段是单数。
+		// 分解段有多个入口时应当改用 rewire_when_zero 那种数组形式。
+		first := imports[0]
+		p.RewireWhenSet = &Rewire{Node: first.Node, Input: first.Input, Source: rw.Source, Slot: rw.Slot}
+	}
+	return p
 }

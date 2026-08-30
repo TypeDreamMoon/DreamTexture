@@ -1,0 +1,180 @@
+{
+  "id": "src-local-stylized-v1",
+  "version": 1,
+  "segment": "source",
+  "name": "本地 SDXL · 手绘",
+  "domain": "stylized",
+  "description": "本机 SDXL 叠手绘 LoRA，同样走 circular padding 保证无缝。",
+  "template": "src-local-stylized-v1.json",
+  "resolution": 1024,
+  "tileable": true,
+  "export": {
+    "node": "dt.decode",
+    "slot": 0
+  },
+  "model_requirements": [
+    {
+      "kind": "checkpoint",
+      "file": "Juggernaut-XL-v9.safetensors",
+      "dir": "checkpoints",
+      "size_bytes": 7105348188,
+      "source": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
+      "download_url": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+      "auth": "none"
+    },
+    {
+      "kind": "lora",
+      "file": "HandPainted2D-Seamless-SDXL.safetensors",
+      "dir": "loras",
+      "size_bytes": 228455996,
+      "source": "https://civitai.com/models/483692",
+      "download_url": "https://civitai.com/api/download/models/537948?fileId=454676",
+      "auth": "civitai-login",
+      "note": "Civitai 要求登录才能下载：在设置里填好 Civitai 令牌即可自动下，否则请在浏览器中下载后改名放入 loras 目录。触发词 2d seamless hand-painted texture"
+    }
+  ],
+  "node_packs": [
+    "ComfyUI-seamless-tiling"
+  ],
+  "params": [
+    {
+      "key": "prompt",
+      "label": "提示词",
+      "type": "string",
+      "multiline": true,
+      "target": "dt.positive.text",
+      "prefix": "2d seamless hand-painted texture, ",
+      "suffix": ", top down view, seamless tileable, flat even lighting, no shadows",
+      "default": "stylized hand painted stone bricks with moss"
+    },
+    {
+      "key": "negative",
+      "label": "负面词",
+      "type": "string",
+      "multiline": true,
+      "target": "dt.negative.text",
+      "default": "photo, photorealistic, 3d render, perspective, vignette, cast shadow, specular highlight, blurry, watermark, text"
+    },
+    {
+      "key": "resolution",
+      "label": "分辨率",
+      "type": "enum",
+      "options": [
+        512,
+        768,
+        1024
+      ],
+      "target": [
+        "dt.latent.width",
+        "dt.latent.height"
+      ],
+      "default": 1024
+    },
+    {
+      "key": "seed",
+      "label": "种子",
+      "type": "int",
+      "target": "dt.sampler.seed",
+      "default": -1,
+      "note": "-1 表示每个变体随机"
+    },
+    {
+      "key": "reference",
+      "label": "参考图",
+      "type": "image",
+      "target": "dt.reference_image.image",
+      "rewire_when_set": {
+        "node": "dt.sampler",
+        "input": "latent_image",
+        "source": "dt.reference_encode",
+        "slot": 0
+      },
+      "drop_when_empty": [
+        "dt.reference_image",
+        "dt.reference_scale",
+        "dt.reference_encode"
+      ],
+      "note": "留空为纯文生图。给了参考图就变成在它基础上重绘，重绘幅度在高级参数里调"
+    }
+  ],
+  "advanced": [
+    {
+      "key": "steps",
+      "label": "步数",
+      "type": "int",
+      "min": 10,
+      "max": 60,
+      "target": "dt.sampler.steps",
+      "default": 30
+    },
+    {
+      "key": "cfg",
+      "label": "CFG",
+      "type": "float",
+      "min": 1,
+      "max": 15,
+      "target": "dt.sampler.cfg",
+      "default": 7
+    },
+    {
+      "key": "sampler",
+      "label": "采样器",
+      "type": "string",
+      "target": "dt.sampler.sampler_name",
+      "default": "dpmpp_2m"
+    },
+    {
+      "key": "scheduler",
+      "label": "调度器",
+      "type": "string",
+      "target": "dt.sampler.scheduler",
+      "default": "karras"
+    },
+    {
+      "key": "denoise",
+      "label": "重绘幅度",
+      "type": "float",
+      "min": 0.1,
+      "max": 1.0,
+      "target": "dt.sampler.denoise",
+      "default": 1.0,
+      "note": "仅在给了参考图时有意义。手绘化改造建议 0.6~0.75，太低会保留原图的写实光影"
+    },
+    {
+      "key": "reference_size",
+      "label": "参考图缩放",
+      "type": "enum",
+      "options": [
+        512,
+        768,
+        1024
+      ],
+      "target": [
+        "dt.reference_scale.width",
+        "dt.reference_scale.height"
+      ],
+      "default": 1024,
+      "note": "参考图会先居中裁切缩放到这个尺寸，应与出图分辨率一致"
+    },
+    {
+      "key": "lora_strength",
+      "label": "风格强度",
+      "type": "float",
+      "min": 0,
+      "max": 1.5,
+      "target": [
+        "dt.style_lora.strength_model",
+        "dt.style_lora.strength_clip"
+      ],
+      "default": 0.85,
+      "bypass_when_zero": {
+        "node": "dt.style_lora",
+        "passthrough": [
+          "model",
+          "clip"
+        ]
+      },
+      "note": "设为 0 时摘掉 LoRA 节点，等价于只用底模"
+    }
+  ]
+}

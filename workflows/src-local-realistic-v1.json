@@ -1,0 +1,163 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "Juggernaut-XL-v9.safetensors"
+    },
+    "_meta": {
+      "title": "dt.checkpoint"
+    }
+  },
+  "2": {
+    "class_type": "SeamlessTile",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "tiling": "enable",
+      "copy_model": "Modify in place"
+    },
+    "_meta": {
+      "title": "dt.seamless_model"
+    }
+  },
+  "3": {
+    "class_type": "MakeCircularVAE",
+    "inputs": {
+      "vae": [
+        "1",
+        2
+      ],
+      "tiling": "enable",
+      "copy_vae": "Make a copy"
+    },
+    "_meta": {
+      "title": "dt.seamless_vae"
+    }
+  },
+  "4": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "texture of large old broken rocks with moss, top down view, seamless tileable, orthographic, flat even lighting, no shadows",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "dt.positive"
+    }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "perspective, vignette, cast shadow, specular highlight, blurry, watermark, text, border",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "dt.negative"
+    }
+  },
+  "6": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "dt.latent"
+    }
+  },
+  "7": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "2",
+        0
+      ],
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "5",
+        0
+      ],
+      "latent_image": [
+        "6",
+        0
+      ],
+      "seed": 1019289458269256,
+      "steps": 30,
+      "cfg": 7,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1
+    },
+    "_meta": {
+      "title": "dt.sampler"
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "7",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "dt.decode"
+    }
+  },
+  "9": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": ""
+    },
+    "_meta": {
+      "title": "dt.reference_image"
+    }
+  },
+  "10": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "9",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 1024,
+      "height": 1024,
+      "crop": "center"
+    },
+    "_meta": {
+      "title": "dt.reference_scale"
+    }
+  },
+  "11": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "10",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "dt.reference_encode"
+    }
+  }
+}

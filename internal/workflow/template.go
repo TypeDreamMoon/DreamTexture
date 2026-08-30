@@ -476,6 +476,12 @@ func validate(m *Meta, g Graph) error {
 		}
 		for _, rw := range rewires {
 			for _, n := range []string{rw.Node, rw.Source} {
+				// 出图段可以用 @import 指代"分解段的入口"——它叫什么取决于配了
+				// 哪个分解段，出图段无从知道。拼接时展开成真实标题，那之后这里
+				// 会照常校验；所以只在段里放行，完整模板里出现它仍然是错的。
+				if n == ImportPlaceholder && m.Segment == SegmentSource {
+					continue
+				}
 				if !titles[n] {
 					return fmt.Errorf("参数 %s 的改接目标 %q 在模板里不存在", p.Key, n)
 				}

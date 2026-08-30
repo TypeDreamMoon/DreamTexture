@@ -1,0 +1,230 @@
+{
+  "1": {
+    "class_type": "ChordLoadModel",
+    "inputs": {
+      "ckpt_name": "chord_v1.safetensors"
+    },
+    "_meta": {
+      "title": "dt.chord_model"
+    }
+  },
+  "2": {
+    "class_type": "ChordMaterialEstimation",
+    "inputs": {
+      "chord_model": [
+        "1",
+        0
+      ],
+      "image": null
+    },
+    "_meta": {
+      "title": "dt.pbr_estimate"
+    }
+  },
+  "3": {
+    "class_type": "NormalConverter",
+    "inputs": {
+      "normal": [
+        "2",
+        1
+      ],
+      "conversion": "OpenGL_to_DirectX"
+    },
+    "_meta": {
+      "title": "dt.normal_to_ue"
+    }
+  },
+  "4": {
+    "class_type": "ChordNormalToHeight",
+    "inputs": {
+      "normal": [
+        "2",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "dt.height_from_normal"
+    }
+  },
+  "5": {
+    "class_type": "DT_EnsureImageShape",
+    "inputs": {
+      "image": [
+        "4",
+        0
+      ],
+      "channels": "3"
+    },
+    "_meta": {
+      "title": "dt.height_fixshape"
+    }
+  },
+  "6": {
+    "class_type": "DT_EnsureImageShape",
+    "inputs": {
+      "image": [
+        "2",
+        2
+      ],
+      "channels": "3"
+    },
+    "_meta": {
+      "title": "dt.roughness_fixshape"
+    }
+  },
+  "7": {
+    "class_type": "DT_EnsureImageShape",
+    "inputs": {
+      "image": [
+        "2",
+        3
+      ],
+      "channels": "3"
+    },
+    "_meta": {
+      "title": "dt.metallic_fixshape"
+    }
+  },
+  "8": {
+    "class_type": "AOApproximator",
+    "inputs": {
+      "radius": 36,
+      "strength": 2.2,
+      "samples": 32,
+      "contrast": 1.6,
+      "use_normal": true,
+      "height": [
+        "5",
+        0
+      ],
+      "normal": [
+        "2",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "dt.derive_ao"
+    }
+  },
+  "9": {
+    "class_type": "ChannelPackerORMA",
+    "inputs": {
+      "occlusion": [
+        "8",
+        0
+      ],
+      "roughness": [
+        "6",
+        0
+      ],
+      "metallic": [
+        "7",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "dt.pack_orm"
+    }
+  },
+  "10": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": null,
+      "filename_prefix": "dreamtexture/source"
+    },
+    "_meta": {
+      "title": "dt.out.source"
+    }
+  },
+  "11": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "2",
+        0
+      ],
+      "filename_prefix": "dreamtexture/basecolor"
+    },
+    "_meta": {
+      "title": "dt.out.basecolor"
+    }
+  },
+  "12": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "3",
+        0
+      ],
+      "filename_prefix": "dreamtexture/normal"
+    },
+    "_meta": {
+      "title": "dt.out.normal"
+    }
+  },
+  "13": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "6",
+        0
+      ],
+      "filename_prefix": "dreamtexture/roughness"
+    },
+    "_meta": {
+      "title": "dt.out.roughness"
+    }
+  },
+  "14": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "7",
+        0
+      ],
+      "filename_prefix": "dreamtexture/metallic"
+    },
+    "_meta": {
+      "title": "dt.out.metallic"
+    }
+  },
+  "15": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ],
+      "filename_prefix": "dreamtexture/ao"
+    },
+    "_meta": {
+      "title": "dt.out.ao"
+    }
+  },
+  "16": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "5",
+        0
+      ],
+      "filename_prefix": "dreamtexture/height"
+    },
+    "_meta": {
+      "title": "dt.out.height"
+    }
+  },
+  "17": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "9",
+        0
+      ],
+      "filename_prefix": "dreamtexture/orm"
+    },
+    "_meta": {
+      "title": "dt.out.orm"
+    }
+  }
+}

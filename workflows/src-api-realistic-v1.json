@@ -1,0 +1,152 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": ""
+    },
+    "_meta": {
+      "title": "dt.source_image"
+    }
+  },
+  "2": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "1",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 1024,
+      "height": 1024,
+      "crop": "center"
+    },
+    "_meta": {
+      "title": "dt.source_scale"
+    }
+  },
+  "3": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "2",
+        0
+      ],
+      "vae": [
+        "6",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "dt.source_encode"
+    }
+  },
+  "4": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "Juggernaut-XL-v9.safetensors"
+    },
+    "_meta": {
+      "title": "dt.checkpoint"
+    }
+  },
+  "5": {
+    "class_type": "SeamlessTile",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "tiling": "enable",
+      "copy_model": "Modify in place"
+    },
+    "_meta": {
+      "title": "dt.seamless_model"
+    }
+  },
+  "6": {
+    "class_type": "MakeCircularVAE",
+    "inputs": {
+      "vae": [
+        "4",
+        2
+      ],
+      "tiling": "enable",
+      "copy_vae": "Make a copy"
+    },
+    "_meta": {
+      "title": "dt.seamless_vae"
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "texture of large old broken rocks with moss, top down view, seamless tileable, orthographic, flat even lighting, no shadows",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "dt.positive"
+    }
+  },
+  "8": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "perspective, vignette, cast shadow, specular highlight, blurry, watermark, text, border",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "dt.negative"
+    }
+  },
+  "9": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "5",
+        0
+      ],
+      "positive": [
+        "7",
+        0
+      ],
+      "negative": [
+        "8",
+        0
+      ],
+      "latent_image": [
+        "3",
+        0
+      ],
+      "seed": 1019289458269256,
+      "steps": 30,
+      "cfg": 7,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1
+    },
+    "_meta": {
+      "title": "dt.sampler"
+    }
+  },
+  "10": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "9",
+        0
+      ],
+      "vae": [
+        "6",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "dt.decode"
+    }
+  }
+}

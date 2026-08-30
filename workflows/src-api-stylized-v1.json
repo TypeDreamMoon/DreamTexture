@@ -1,0 +1,171 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": ""
+    },
+    "_meta": {
+      "title": "dt.source_image"
+    }
+  },
+  "2": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "1",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 1024,
+      "height": 1024,
+      "crop": "center"
+    },
+    "_meta": {
+      "title": "dt.source_scale"
+    }
+  },
+  "3": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "2",
+        0
+      ],
+      "vae": [
+        "7",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "dt.source_encode"
+    }
+  },
+  "4": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "Juggernaut-XL-v9.safetensors"
+    },
+    "_meta": {
+      "title": "dt.checkpoint"
+    }
+  },
+  "5": {
+    "class_type": "LoraLoader",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "clip": [
+        "4",
+        1
+      ],
+      "lora_name": "HandPainted2D-Seamless-SDXL.safetensors",
+      "strength_model": 0.85,
+      "strength_clip": 0.85
+    },
+    "_meta": {
+      "title": "dt.style_lora"
+    }
+  },
+  "6": {
+    "class_type": "SeamlessTile",
+    "inputs": {
+      "model": [
+        "5",
+        0
+      ],
+      "tiling": "enable",
+      "copy_model": "Modify in place"
+    },
+    "_meta": {
+      "title": "dt.seamless_model"
+    }
+  },
+  "7": {
+    "class_type": "MakeCircularVAE",
+    "inputs": {
+      "vae": [
+        "4",
+        2
+      ],
+      "tiling": "enable",
+      "copy_vae": "Make a copy"
+    },
+    "_meta": {
+      "title": "dt.seamless_vae"
+    }
+  },
+  "8": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "2d seamless hand-painted texture, stylized hand painted stone bricks with moss, top down view, seamless tileable, flat even lighting, no shadows",
+      "clip": [
+        "5",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "dt.positive"
+    }
+  },
+  "9": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "photo, photorealistic, 3d render, perspective, vignette, cast shadow, specular highlight, blurry, watermark, text",
+      "clip": [
+        "5",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "dt.negative"
+    }
+  },
+  "10": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "6",
+        0
+      ],
+      "positive": [
+        "8",
+        0
+      ],
+      "negative": [
+        "9",
+        0
+      ],
+      "latent_image": [
+        "3",
+        0
+      ],
+      "seed": 1019289458269256,
+      "steps": 30,
+      "cfg": 7,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1
+    },
+    "_meta": {
+      "title": "dt.sampler"
+    }
+  },
+  "11": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "10",
+        0
+      ],
+      "vae": [
+        "7",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "dt.decode"
+    }
+  }
+}

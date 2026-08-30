@@ -1,0 +1,158 @@
+{
+  "id": "dec-derive-v1",
+  "version": 1,
+  "segment": "decompose",
+  "name": "传统派生",
+  "description": "底图本身就是 BaseColor，高度取亮度、法线由高度推、AO 近似、粗糙度反相压缩、金属度给常数。",
+  "template": "dec-derive-v1.json",
+  "tileable": true,
+  "imports": [
+    {
+      "node": "dt.luminance",
+      "input": "color"
+    },
+    {
+      "node": "dt.out.basecolor",
+      "input": "images"
+    }
+  ],
+  "model_requirements": [],
+  "node_packs": [
+    "ComfyUI-TextureAlchemy"
+  ],
+  "params": [
+    {
+      "key": "resolution",
+      "label": "分辨率",
+      "type": "enum",
+      "options": [
+        512,
+        768,
+        1024
+      ],
+      "target": [
+        "dt.metallic_const.width",
+        "dt.metallic_const.height"
+      ],
+      "default": 1024
+    }
+  ],
+  "advanced": [
+    {
+      "key": "height_contrast",
+      "label": "高度对比",
+      "type": "float",
+      "min": 1.0,
+      "max": 3.0,
+      "target": "dt.height_contrast.amount",
+      "default": 2.0,
+      "note": "手绘素材本身对比度低，派生需要比写实更高的增益；超过 2.4 高度暗部会压死"
+    },
+    {
+      "key": "height_invert",
+      "label": "高度反相",
+      "type": "bool",
+      "target": "dt.height_normalize.invert",
+      "default": false
+    },
+    {
+      "key": "normal_strength",
+      "label": "法线强度",
+      "type": "float",
+      "min": 0.1,
+      "max": 4.0,
+      "target": "dt.derive_normal.strength",
+      "default": 2.2
+    },
+    {
+      "key": "normal_format",
+      "label": "法线格式",
+      "type": "enum",
+      "options": [
+        "DirectX",
+        "OpenGL"
+      ],
+      "target": "dt.derive_normal.output_format",
+      "default": "DirectX",
+      "note": "DirectX = Y 向下，UE/Maya 惯例；OpenGL = Y 向上，Unity/Blender/Three.js 惯例"
+    },
+    {
+      "key": "ao_radius",
+      "label": "AO 半径",
+      "type": "int",
+      "min": 4,
+      "max": 64,
+      "target": "dt.derive_ao.radius",
+      "default": 44
+    },
+    {
+      "key": "ao_strength",
+      "label": "AO 强度",
+      "type": "float",
+      "min": 0,
+      "max": 3,
+      "target": "dt.derive_ao.strength",
+      "default": 2.6
+    },
+    {
+      "key": "roughness_min",
+      "label": "粗糙度下限",
+      "type": "float",
+      "min": 0,
+      "max": 1,
+      "target": "dt.derive_roughness.output_white",
+      "default": 0.6
+    },
+    {
+      "key": "roughness_max",
+      "label": "粗糙度上限",
+      "type": "float",
+      "min": 0,
+      "max": 1,
+      "target": "dt.derive_roughness.output_black",
+      "default": 0.9,
+      "note": "output_black > output_white 即为反相映射：暗处更粗糙"
+    },
+    {
+      "key": "metallic_const",
+      "label": "金属度常数",
+      "type": "int",
+      "min": 0,
+      "max": 255,
+      "target": "dt.metallic_const.color",
+      "default": 0
+    }
+  ],
+  "outputs": {
+    "basecolor": {
+      "node": "dt.out.basecolor",
+      "colorspace": "srgb"
+    },
+    "normal": {
+      "node": "dt.out.normal",
+      "colorspace": "linear",
+      "y_from_param": "normal_format"
+    },
+    "roughness": {
+      "node": "dt.out.roughness",
+      "colorspace": "linear"
+    },
+    "metallic": {
+      "node": "dt.out.metallic",
+      "colorspace": "linear"
+    },
+    "ao": {
+      "node": "dt.out.ao",
+      "colorspace": "linear"
+    },
+    "height": {
+      "node": "dt.out.height",
+      "colorspace": "linear"
+    },
+    "orm": {
+      "node": "dt.out.orm",
+      "colorspace": "linear",
+      "packing": "R=ao,G=roughness,B=metallic"
+    }
+  }
+}
