@@ -246,10 +246,10 @@ type scanner interface{ Scan(...any) error }
 
 func scanJob(r scanner) (*Job, error) {
 	var (
-		j                   Job
-		params, status      string
-		created             int64
-		started, finished   sql.NullInt64
+		j                 Job
+		params, status    string
+		created           int64
+		started, finished sql.NullInt64
 	)
 	err := r.Scan(&j.ID, &j.MaterialID, &j.WorkflowID, &params, &status, &j.PromptID,
 		&j.Progress, &j.Stage, &j.Error, &j.BatchID, &created, &started, &finished)

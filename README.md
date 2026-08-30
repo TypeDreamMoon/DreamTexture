@@ -13,9 +13,11 @@
 | **材质** | BaseColor / Normal / Roughness / Metallic / AO / Height / ORM 一整套，配一份 `manifest.json` |
 | **图片** | 单张 PNG，配一份同名 json |
 
-两条材质管线：写实走 SDXL 无缝纹理 + [CHORD](https://github.com/ubisoft/ComfyUI-Chord)
-分解，手绘走 LoRA + 传统亮度推导。底图也可以交给云端模型出（OpenAI 图像接口，
-Go 直连，花的是你自己的额度），再由本地分解。
+材质管线拆成**出图段 × 分解段**两半自由组合：出图可选本地 SDXL（写实/手绘 LoRA）
+或云端模型出底图（OpenAI 图像接口，Go 直连，花的是你自己的额度），分解可选
+[CHORD](https://github.com/ubisoft/ComfyUI-Chord) 一步估计或传统亮度推导。
+4×2 = 8 条管线，加一个分解模型只需要一个文件（见
+[workflow-segments.md](docs/workflow-segments.md)）。
 
 围绕这条主线还有：模型管理与下载、节点包管理、参考图库、提示词扩写、
 运行日志控制台、ComfyUI 一键部署。
@@ -82,6 +84,7 @@ go build -o "src-tauri/binaries/dreamtexture-$(rustc -vV | sed -n 's/^host: //p'
 | [manifest-v1.md](docs/manifest-v1.md) | 材质套装的落盘格式 |
 | [deploy.md](docs/deploy.md) | 一键部署 ComfyUI |
 | [models.md](docs/models.md) · [nodes-and-catalog.md](docs/nodes-and-catalog.md) | 模型与节点包管理 |
+| [workflow-segments.md](docs/workflow-segments.md) | 出图段 × 分解段的分段与组合，以及拼接时会拦下什么 |
 | [workflow-editing.md](docs/workflow-editing.md) | 工作流模板的往返编辑 |
 | [reference-image.md](docs/reference-image.md) | 参考图 / img2img |
 | [desktop-shell.md](docs/desktop-shell.md) | Tauri 外壳、进程生命周期、相对路径的解析基准 |

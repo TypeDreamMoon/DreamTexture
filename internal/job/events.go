@@ -8,9 +8,9 @@ import (
 
 // Event 是推给前端 / UE 的一条任务事件。
 type Event struct {
-	Type string `json:"type"` // job.queued | job.progress | job.done | job.failed | comfy.status
-	Job  *store.Job  `json:"job,omitempty"`
-	Data any         `json:"data,omitempty"`
+	Type string     `json:"type"` // job.queued | job.progress | job.done | job.failed | comfy.status
+	Job  *store.Job `json:"job,omitempty"`
+	Data any        `json:"data,omitempty"`
 }
 
 // Bus 是进程内的事件广播。订阅者各有一条带缓冲的通道，

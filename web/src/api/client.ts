@@ -61,7 +61,11 @@ export const api = {
   checks: () => request<CheckResult>('/api/checks'),
 
   workflows: () =>
-    request<{ workflows: WorkflowMeta[] }>('/api/workflows').then((r) => r.workflows),
+    request<{ workflows: WorkflowMeta[]; segments: WorkflowMeta[] }>('/api/workflows').then((r) => ({
+      workflows: r.workflows ?? [],
+      // 老后端不返回 segments，别让前端在 .filter 上炸。
+      segments: r.segments ?? [],
+    })),
 
   reloadWorkflows: () =>
     request<{ workflows: string[] }>('/api/workflows/reload', { method: 'POST' }),

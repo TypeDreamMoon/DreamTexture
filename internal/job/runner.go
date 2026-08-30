@@ -712,11 +712,9 @@ func (r *Runner) buildManifest(j *store.Job, tpl *workflow.Template,
 			man.Prompt = p.Prefix + str("prompt") + p.Suffix
 		}
 	}
-	if ln := tpl.Meta.LicenseNotice; ln != nil {
-		man.LicenseFlags = &material.LicenseFlags{
-			CommercialUse: ln.Commercial,
-			Reason:        ln.Component + ": " + ln.License,
-		}
+	if len(tpl.Meta.Licenses) > 0 {
+		ok, reason := tpl.Meta.Commercial()
+		man.LicenseFlags = &material.LicenseFlags{CommercialUse: ok, Reason: reason}
 	}
 	// 只记这一次**真的用到**的模型。
 	//

@@ -144,3 +144,33 @@ func diffTitles(got, want map[string]map[string]any) string {
 	}
 	return fmt.Sprintf("组合版缺少 %v，多出 %v", missing, extra)
 }
+
+// TestChordCombosStayNonCommercial 盯住许可标记不会在组合里丢掉。
+//
+// 这个曾经真的丢过：manifest 那边读的是单数的 LicenseNotice，而组合模板只填
+// 复数的 Licenses，于是所有走 CHORD 的组合落盘时都**没有** license_flags——
+// 产物看上去可以随便用。这类错误不会有任何报错，只会在某天变成法务问题，
+// 所以必须由测试守着。
+func TestChordCombosStayNonCommercial(t *testing.T) {
+	reg := NewRegistry("../../workflows")
+	if err := reg.Load(); err != nil {
+		t.Fatal(err)
+	}
+	var checked int
+	for _, tpl := range reg.List() {
+		if tpl.Meta.DecomposeSegment != "dec-chord-v1" {
+			continue
+		}
+		checked++
+		ok, reason := tpl.Meta.Commercial()
+		if ok {
+			t.Errorf("%s 走的是 CHORD，却报告可商用", tpl.Meta.ID)
+		}
+		if reason == "" {
+			t.Errorf("%s 不可商用但没给原因，界面和 manifest 都没法说清为什么", tpl.Meta.ID)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("一条 CHORD 组合都没查到；组合没拼出来，或者段改名了")
+	}
+}

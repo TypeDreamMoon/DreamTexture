@@ -45,7 +45,7 @@ func NewEventStream(baseURL, clientID string, log *slog.Logger) *EventStream {
 	}
 }
 
-func (s *EventStream) Events() <-chan Event       { return s.out }
+func (s *EventStream) Events() <-chan Event         { return s.out }
 func (s *EventStream) Reconnected() <-chan struct{} { return s.reconnected }
 
 // Run 阻塞直到 ctx 取消，期间持续接收事件并在断线后重连。

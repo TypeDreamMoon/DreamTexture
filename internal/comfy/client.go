@@ -98,8 +98,8 @@ type ImageRef struct {
 
 type HistoryEntry struct {
 	Status struct {
-		StatusStr string `json:"status_str"`
-		Completed bool   `json:"completed"`
+		StatusStr string            `json:"status_str"`
+		Completed bool              `json:"completed"`
 		Messages  []json.RawMessage `json:"messages"`
 	} `json:"status"`
 	Outputs map[string]struct {

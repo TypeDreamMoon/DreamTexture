@@ -27,7 +27,7 @@ type Pack struct {
 	Repository  string `json:"repository"`
 	Reference   string `json:"reference"`
 	// State 取 enabled / disabled / not-installed。
-	State      string   `json:"state"`
+	State       string     `json:"state"`
 	Version     string     `json:"version"`
 	CnrLatest   string     `json:"cnr_latest"`
 	Stars       int        `json:"stars"`

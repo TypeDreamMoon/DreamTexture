@@ -258,6 +258,25 @@ type Meta struct {
 	Outputs  map[string]Output `json:"outputs"`
 }
 
+// Commercial 报告这条管线的产物能不能商用，以及不能的原因。
+//
+// 必须看**全部**许可：组合管线的许可是两段的并集，只要有一段是 research-only，
+// 整套产物就不可商用。这里曾经读的是单数的 LicenseNotice，而组合模板不填那个
+// 字段，于是 CHORD 的 research-only 标记在 manifest 里静默消失了——manifest 正是
+// 下游判断能否商用的唯一依据，丢了不会有任何报错，只会在某天变成一个法务问题。
+func (m *Meta) Commercial() (bool, string) {
+	ok := true
+	var blockers []string
+	for _, l := range m.Licenses {
+		if l.Commercial {
+			continue
+		}
+		ok = false
+		blockers = append(blockers, l.Component+": "+l.License)
+	}
+	return ok, strings.Join(blockers, "; ")
+}
+
 // AllParams 返回基础参数与高级参数的合集。
 func (m *Meta) AllParams() []Param {
 	out := make([]Param, 0, len(m.Params)+len(m.Advanced))

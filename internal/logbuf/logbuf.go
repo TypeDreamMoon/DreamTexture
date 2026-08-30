@@ -16,9 +16,9 @@ import (
 // Line 是一条日志。
 type Line struct {
 	// Seq 单调递增，客户端据此增量拉取，不必每次要全量。
-	Seq  int64     `json:"seq"`
-	At   time.Time `json:"at"`
-	Level string   `json:"level"`
+	Seq   int64     `json:"seq"`
+	At    time.Time `json:"at"`
+	Level string    `json:"level"`
 	// Source 区分是后端自己的日志还是 ComfyUI 的输出。
 	Source string `json:"source"`
 	Text   string `json:"text"`

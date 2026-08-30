@@ -16,7 +16,7 @@ import ReferenceInput from '../components/ReferenceInput.vue'
 import SelfCheck from '../components/SelfCheck.vue'
 import JobCard from '../components/JobCard.vue'
 import { api } from '../api/client'
-import { workflows, jobs, batchJobs, upsertJob, health } from '../store'
+import { workflows, segments, jobs, batchJobs, upsertJob, health } from '../store'
 import { persisted, persistedEnum } from '../persist'
 import type { Param, WorkflowMeta } from '../api/types'
 
@@ -39,20 +39,108 @@ const KINDS = [
   { label: '图片', value: 'image' as const },
 ]
 
-const kindWorkflows = computed(() => workflows.value.filter((w) => w.kind === kind.value))
-
-const current = computed<WorkflowMeta | undefined>(() =>
-  workflows.value.find((w) => w.id === selectedID.value),
-)
-
 const STYLE_LABEL: Record<string, string> = {
   realistic: '写实',
   stylized: '手绘',
   image: '出图',
 }
 
+const kindWorkflows = computed(() => workflows.value.filter((w) => w.kind === kind.value))
+
+const current = computed<WorkflowMeta | undefined>(() =>
+  workflows.value.find((w) => w.id === selectedID.value),
+)
+
+// 材质这一档下面还有两种选法：
+//
+//   组合   —— 出图模型 × 分解模型，两个下拉各选各的。这才是常态。
+//   单工作流 —— 直接选一份完整模板，给自己导入的工作流用。
+//
+// 分成两种是因为组合出来的管线不该和自定义模板混在一个列表里：混着的话，八条
+// 组合会把列表撑满，而它们本质上只是两个维度的乘积，用两个下拉表达才对得上
+// 用户心里的模型。
+const matMode = persistedEnum<'combo' | 'custom'>('gen.matmode', 'combo', ['combo', 'custom'])
+const srcID = persisted<string>('gen.src', '')
+const decID = persisted<string>('gen.dec', '')
+
+const sourceSegs = computed(() => segments.value.filter((s) => s.segment === 'source'))
+const decomposeSegs = computed(() => segments.value.filter((s) => s.segment === 'decompose'))
+// 自定义模板 = 材质档里不是拼出来的那些。
+const customWorkflows = computed(() => kindWorkflows.value.filter((w) => !w.source_segment))
+// 组合模式只在真的有段可选时才成立，否则退回单工作流——不然界面上是两个空下拉。
+const canCombine = computed(() => sourceSegs.value.length > 0 && decomposeSegs.value.length > 0)
+const comboMode = computed(() => kind.value === 'material' && matMode.value === 'combo' && canCombine.value)
+
+const segOptions = (list: WorkflowMeta[]) =>
+  list.map((w) => ({
+    label: w.name,
+    value: w.id,
+    style: STYLE_LABEL[w.domain ?? ''] ?? '',
+    cloud: !!w.source,
+  }))
+const sourceOptions = computed(() => segOptions(sourceSegs.value))
+const decomposeOptions = computed(() =>
+  // 分解段没有"画风"也没有"底图在哪出"，两个标签都传空——挂个"本地"上去
+  // 是句不知所云的话。
+  decomposeSegs.value.map((w) => ({ label: w.name, value: w.id, style: '', cloud: null })),
+)
+
+// 两个下拉推出选中的组合。
+//
+// 用事件而不是 watch(srcID, decID)：watch 会在列表加载、切档这些时刻也触发，
+// 拿着**上次残留的** srcID/decID 去覆盖刚刚恢复出来的 selectedID——表现是每次
+// 进页面都跳回上一次的组合，而不是你真正选的那个。改成只在用户动下拉时才推。
+//
+// 找不到对应组合就不动 selectedID：那说明两段拼不起来，保持原样比把界面清空好。
+function applyCombo() {
+  if (!comboMode.value || !srcID.value || !decID.value) return
+  const id = `${srcID.value}.${decID.value}`
+  if (workflows.value.some((w) => w.id === id)) selectedID.value = id
+}
+function pickSource(id: string) {
+  srcID.value = id
+  applyCombo()
+}
+function pickDecompose(id: string) {
+  decID.value = id
+  applyCombo()
+}
+function pickMode(m: 'combo' | 'custom') {
+  matMode.value = m
+  applyCombo()
+}
+
+// 反过来：选中的是组合时，把它拆回两个下拉。恢复上次的选择、以及详情页
+// 「再来一张」带过来的那个 workflow_id，都要靠这一步才能在界面上显示对。
+watch(
+  [current, segments],
+  () => {
+    const wf = current.value
+    if (wf?.source_segment && wf.decompose_segment) {
+      srcID.value = wf.source_segment
+      decID.value = wf.decompose_segment
+      return
+    }
+    if (!srcID.value) srcID.value = sourceSegs.value[0]?.id ?? ''
+    if (!decID.value) decID.value = decomposeSegs.value[0]?.id ?? ''
+  },
+  { immediate: true },
+)
+
+// 单工作流模式下只列自定义模板——组合出来的那八条由上面两个下拉表达，
+// 混进来只会让人以为有两套一样的东西。
+const singleList = computed(() =>
+  kind.value === 'material' ? customWorkflows.value : kindWorkflows.value,
+)
+
+// 许可要看并集：云端底图 + CHORD 的 research-only 标记来自分解段，
+// 只看一边会把它漏掉。
+const nonCommercial = computed(() =>
+  (current.value?.licenses ?? []).filter((l) => !l.commercial),
+)
+
 const workflowOptions = computed(() =>
-  kindWorkflows.value.map((w) => ({
+  singleList.value.map((w) => ({
     label: w.name,
     value: w.id,
     style: STYLE_LABEL[w.style] ?? w.style,
@@ -75,14 +163,22 @@ watch(kind, () => {
 // 类名用全局的 dt-opt-*：下拉菜单被 teleport 到 body 之外，组件的 scoped
 // 样式（哪怕 :deep）都够不着它。
 function renderWorkflow(opt: SelectOption) {
+  const tags = []
+  if (opt.style) tags.push(h('span', { class: 'dt-opt-tag' }, String(opt.style)))
+  // null 表示"这一项没有底图来源这个维度"（分解段就是），与 false（本地出图）
+  // 是两回事，所以判 null 而不是判真假。
+  if (opt.cloud !== null && opt.cloud !== undefined) {
+    tags.push(
+      h(
+        'span',
+        { class: opt.cloud ? 'dt-opt-tag dt-opt-tag-accent' : 'dt-opt-tag' },
+        opt.cloud ? '云端底图' : '本地',
+      ),
+    )
+  }
   return h('div', { class: 'dt-opt' }, [
     h('span', { class: 'dt-opt-name' }, String(opt.label)),
-    h('span', { class: 'dt-opt-tag' }, String(opt.style ?? '')),
-    h(
-      'span',
-      { class: opt.cloud ? 'dt-opt-tag dt-opt-tag-accent' : 'dt-opt-tag' },
-      opt.cloud ? '云端底图' : '本地',
-    ),
+    ...tags,
   ])
 }
 
@@ -355,16 +451,51 @@ function acceptRefined() {
           </button>
         </div>
 
-        <p class="dt-label">{{ kind === 'material' ? '风格预设' : '出图方式' }}</p>
-        <NSelect
-          v-model:value="selectedID"
-          :options="workflowOptions"
-          :render-label="renderWorkflow"
-          class="styles"
-        />
+        <!-- 材质档下面还分组合 / 单工作流。只有真存在自定义模板时才把这个
+             切换露出来：没有的话它是个点了什么也没有的死按钮。 -->
+        <div v-if="kind === 'material' && canCombine && customWorkflows.length" class="modes">
+          <button class="mode" :class="{ on: matMode === 'combo' }" @click="pickMode('combo')">
+            组合
+          </button>
+          <button class="mode" :class="{ on: matMode === 'custom' }" @click="pickMode('custom')">
+            单工作流
+          </button>
+        </div>
+
+        <template v-if="comboMode">
+          <p class="dt-label">出图模型</p>
+          <NSelect
+            :value="srcID"
+            :options="sourceOptions"
+            @update:value="pickSource"
+            :render-label="renderWorkflow"
+            class="styles"
+          />
+          <p class="dt-label sp">分解模型</p>
+          <NSelect
+            :value="decID"
+            :options="decomposeOptions"
+            @update:value="pickDecompose"
+            :render-label="renderWorkflow"
+            class="styles"
+          />
+        </template>
+        <template v-else>
+          <p class="dt-label">{{ kind === 'material' ? '工作流' : '出图方式' }}</p>
+          <NSelect
+            v-model:value="selectedID"
+            :options="workflowOptions"
+            :render-label="renderWorkflow"
+            class="styles"
+          />
+        </template>
+
         <p v-if="current" class="desc dt-muted">{{ current.description }}</p>
-        <p v-if="current?.license_notice && !current.license_notice.commercial" class="notice">
-          {{ current.license_notice.component }} 为研究用途许可，产出不可商用
+        <!-- 两段搭不上只提醒不拦：手绘图对 CHORD 是分布外输入，结果会明显变差，
+             但要不要试是用户的事。 -->
+        <p v-if="current?.mismatch" class="warn">{{ current.mismatch }}</p>
+        <p v-for="lic in nonCommercial" :key="lic.component" class="notice">
+          {{ lic.component }} 为研究用途许可，产出不可商用
         </p>
       </div>
 
@@ -556,8 +687,51 @@ function acceptRefined() {
   font-weight: 500;
 }
 
+/* 组合 / 单工作流。比档位切换（.kinds）低一级，所以做得更轻：
+   没有底板，只有一条选中下划线，免得两排一样的胶囊按钮叠在一起分不出主次。 */
+.modes {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.mode {
+  font: inherit;
+  font-size: var(--dt-fs-sm);
+  padding: 2px 0 5px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--dt-ink-muted);
+  cursor: pointer;
+  transition:
+    color 0.16s ease,
+    border-color 0.16s ease;
+}
+.mode:hover {
+  color: var(--dt-ink);
+}
+.mode.on {
+  color: var(--dt-accent);
+  border-bottom-color: var(--dt-accent);
+}
+
 .styles {
   margin-top: 10px;
+}
+/* 第二个下拉的标签要跟上面那个拉开，不然两组控件糊成一片。 */
+.sp {
+  margin-top: 14px;
+}
+
+/* 两段搭不上的提醒。与 .notice（许可）区分开：那条是硬约束，这条是"可以试，
+   但心里有数"，所以用 muted 的说明体而不是同一种警告色块。 */
+.warn {
+  margin: 8px 0 0;
+  font-size: var(--dt-fs-sm);
+  line-height: 1.6;
+  color: var(--dt-ink-muted);
+  border-left: 2px solid var(--dt-border-strong);
+  padding-left: 9px;
 }
 
 .refine-row {

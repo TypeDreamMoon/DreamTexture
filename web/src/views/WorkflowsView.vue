@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { NButton, NInput, NSelect, NModal, NCheckbox, NTag, NAlert, useMessage } from 'naive-ui'
 import PageHeader from '../components/PageHeader.vue'
 import { api } from '../api/client'
-import { workflows, health } from '../store'
+import { workflows, health, segments} from '../store'
 import type { WorkflowMeta } from '../api/types'
 
 const message = useMessage()
@@ -20,7 +20,9 @@ async function refresh() {
   reloading.value = true
   try {
     await api.reloadWorkflows()
-    workflows.value = await api.workflows()
+    const r = await api.workflows()
+    workflows.value = r.workflows
+    segments.value = r.segments
     message.success('已重新加载')
   } catch (e) {
     message.error(String((e as Error).message))
@@ -79,7 +81,9 @@ async function doImport() {
   importing.value = true
   try {
     await api.importWorkflow({ ...form.value, graph })
-    workflows.value = await api.workflows()
+    const r = await api.workflows()
+    workflows.value = r.workflows
+    segments.value = r.segments
     message.success(`已导入 ${form.value.id}`)
     showImport.value = false
     graphText.value = ''

@@ -64,6 +64,19 @@ export interface WorkflowMeta {
   tileable_when_positive?: string
   source?: SourceSpec
   license_notice?: LicenseNotice
+  /** 这条管线涉及的全部许可提示。组合出来的是两段的并集，单文件模板最多一条。 */
+  licenses?: LicenseNotice[]
+
+  /** 段专用：source | decompose。完整模板没有这个字段。 */
+  segment?: 'source' | 'decompose'
+  /** 出图段产出的画面属于哪一类；分解段声明它吃得下哪些类。 */
+  domain?: string
+  expects_domain?: string[]
+
+  /** 组合出来的管线才有：它是由哪两段拼的，以及两段搭不上时的提醒。 */
+  source_segment?: string
+  decompose_segment?: string
+  mismatch?: string
   node_packs: string[]
   params: Param[]
   advanced: Param[]

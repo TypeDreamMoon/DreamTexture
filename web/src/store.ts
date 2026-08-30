@@ -15,6 +15,9 @@ import type {
 } from './api/types'
 
 export const workflows = ref<WorkflowMeta[]>([])
+
+/** segments 是"半条管线"的声明，自己提交不了，只用来渲染出图/分解那两个下拉。 */
+export const segments = ref<WorkflowMeta[]>([])
 export const health = ref<ComfyHealth | null>(null)
 export const wsConnected = ref(false)
 
@@ -114,7 +117,10 @@ export async function bootstrap() {
     api.comfyStatus(),
     api.jobs(60),
   ])
-  if (wf.status === 'fulfilled') workflows.value = wf.value
+  if (wf.status === 'fulfilled') {
+    workflows.value = wf.value.workflows
+    segments.value = wf.value.segments
+  }
   if (hs.status === 'fulfilled') health.value = hs.value
   if (js.status === 'fulfilled') js.value.forEach(upsertJob)
 }

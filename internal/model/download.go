@@ -20,11 +20,11 @@ import (
 type DownloadState string
 
 const (
-	DownloadQueued    DownloadState = "queued"
-	DownloadRunning   DownloadState = "running"
-	DownloadDone      DownloadState = "done"
-	DownloadFailed    DownloadState = "failed"
-	DownloadCanceled  DownloadState = "canceled"
+	DownloadQueued   DownloadState = "queued"
+	DownloadRunning  DownloadState = "running"
+	DownloadDone     DownloadState = "done"
+	DownloadFailed   DownloadState = "failed"
+	DownloadCanceled DownloadState = "canceled"
 )
 
 type Download struct {

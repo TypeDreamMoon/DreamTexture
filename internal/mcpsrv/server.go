@@ -87,8 +87,8 @@ func register(srv *mcp.Server, d Deps) {
 				Description: t.Meta.Description, Resolution: t.Meta.Resolution,
 				Channels: channels, Params: conv(t.Meta.Params), Advanced: conv(t.Meta.Advanced),
 			}
-			if ln := t.Meta.LicenseNotice; ln != nil {
-				c := ln.Commercial
+			if len(t.Meta.Licenses) > 0 {
+				c, _ := t.Meta.Commercial()
 				info.Commercial = &c
 			}
 			list = append(list, info)

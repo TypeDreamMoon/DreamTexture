@@ -1,0 +1,1 @@
+import{X as e,an as t}from"./client-DNfQtFy2.js";import{C as n}from"./index-B-nu--i8.js";function r(){let r=t(n,null);return r===null&&e(`use-dialog`,`No outer <n-dialog-provider /> founded.`),r}export{r as t};

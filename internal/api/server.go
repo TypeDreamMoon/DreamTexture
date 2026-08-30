@@ -20,11 +20,11 @@ import (
 	"github.com/mengye/dreamtexture/internal/catalog"
 	"github.com/mengye/dreamtexture/internal/comfy"
 	"github.com/mengye/dreamtexture/internal/deploy"
+	"github.com/mengye/dreamtexture/internal/imagen"
 	"github.com/mengye/dreamtexture/internal/job"
+	"github.com/mengye/dreamtexture/internal/logbuf"
 	"github.com/mengye/dreamtexture/internal/material"
 	"github.com/mengye/dreamtexture/internal/model"
-	"github.com/mengye/dreamtexture/internal/imagen"
-	"github.com/mengye/dreamtexture/internal/logbuf"
 	"github.com/mengye/dreamtexture/internal/nodes"
 	"github.com/mengye/dreamtexture/internal/settings"
 	"github.com/mengye/dreamtexture/internal/store"
@@ -168,7 +168,17 @@ func (s *Server) listWorkflows(w http.ResponseWriter, _ *http.Request) {
 	for _, t := range list {
 		out = append(out, t.Meta)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"workflows": out})
+	// 段自己提交不了（出图段没有落盘节点，分解段入口悬空），但界面要用它们渲染
+	// "出图模型 / 分解模型"那两个下拉，所以一并回传，省一次往返。
+	//
+	// 两个切片都用 make 而不是 var：nil 切片会序列化成 null，前端一个 .length
+	// 就炸。这个坑在这个项目里已经踩过两次了。
+	segs := s.Reg.Segments()
+	segOut := make([]workflow.Meta, 0, len(segs))
+	for _, t := range segs {
+		segOut = append(segOut, t.Meta)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"workflows": out, "segments": segOut})
 }
 
 // ---------- 任务 ----------

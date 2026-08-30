@@ -58,9 +58,9 @@ type Catalog struct {
 	comfyBase string
 	http      *http.Client
 
-	mu       sync.RWMutex
-	curated  []Entry
-	fetched  time.Time
+	mu      sync.RWMutex
+	curated []Entry
+	fetched time.Time
 }
 
 func New(comfyBaseURL string) *Catalog {
@@ -77,15 +77,15 @@ func New(comfyBaseURL string) *Catalog {
 var dirForKind = map[string]string{
 	"checkpoint": "checkpoints", "checkpoints": "checkpoints",
 	"lora": "loras", "loras": "loras", "locon": "loras", "dora": "loras",
-	"vae": "vae",
+	"vae":        "vae",
 	"controlnet": "controlnet", "t2i-adapter": "controlnet",
 	"upscale": "upscale_models", "upscaler": "upscale_models",
 	"embedding": "embeddings", "textualinversion": "embeddings",
 	"hypernetwork": "hypernetworks",
-	"clip": "text_encoders", "textencoder": "text_encoders",
+	"clip":         "text_encoders", "textencoder": "text_encoders",
 	"clip_vision": "clip_vision", "clipvision": "clip_vision",
 	"diffusion_model": "diffusion_models", "unet": "diffusion_models",
-	"taesd": "vae_approx",
+	"taesd":  "vae_approx",
 	"gligen": "gligen",
 }
 

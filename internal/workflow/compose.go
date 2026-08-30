@@ -233,11 +233,27 @@ func mergeMeta(src, dec *Meta) (*Meta, error) {
 			}
 		}
 		if !fit {
-			m.Mismatch = fmt.Sprintf("%s 是为 %s 画面训练/调参的，%s 的产物对它是分布外输入，结果可能明显变差",
-				dec.Name, strings.Join(dec.ExpectsDomain, "/"), src.Name)
+			want := make([]string, 0, len(dec.ExpectsDomain))
+			for _, d := range dec.ExpectsDomain {
+				want = append(want, domainLabel(d))
+			}
+			m.Mismatch = fmt.Sprintf("%s 是为%s画面训练/调参的，%s 的产物对它是分布外输入，结果可能明显变差",
+				dec.Name, strings.Join(want, "/"), src.Name)
 		}
 	}
 	return m, nil
+}
+
+// domainLabel 把画面类型翻成给人看的说法。提示是要给用户读的，
+// 里头夹一个 realistic 只会让人多想一步。
+func domainLabel(d string) string {
+	switch d {
+	case "realistic":
+		return "写实"
+	case "stylized":
+		return "手绘"
+	}
+	return d
 }
 
 func mergeRequirements(a, b []ModelRequirement) []ModelRequirement {
